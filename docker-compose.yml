@@ -1,0 +1,38 @@
+services:
+
+  db:
+    image: mysql:8.0
+    container_name: gymtrack-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: gymtrack
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d
+      - db-data:/var/lib/mysql
+    networks:
+      - gymtrack-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer
+    container_name: gymtrack-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - gymtrack-network
+
+volumes:
+  db-data:
+
+networks:
+  gymtrack-network:
+    driver: bridge
