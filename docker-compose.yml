@@ -19,6 +19,22 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: ./app
+    container_name: gymtrack-app
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: gymtrack-db
+      DB_USER: root
+      DB_PASSWORD: root123
+      DB_NAME: gymtrack
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - gymtrack-network
+
   adminer:
     image: adminer
     container_name: gymtrack-adminer
