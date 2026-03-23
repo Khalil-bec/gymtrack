@@ -22,5 +22,16 @@ def get_db():
 def health():
     return jsonify({"status": "ok"})
 
+
+# La route /athletes est une route qui permet de récupérer tous les athlètes de la base de données.
+@app.route("/athletes")
+def get_athletes():
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM athletes")
+    athletes = cursor.fetchall()
+    db.close()
+    return jsonify(athletes)
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
