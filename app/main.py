@@ -16,5 +16,11 @@ def get_db():
         database=os.getenv("DB_NAME", "gymtrack")
     )
 
+    
+# La route /health est une simple route de test qui renvoie un statut "ok" en réponse JSON.
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
