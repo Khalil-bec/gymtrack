@@ -139,7 +139,7 @@
             <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
                 <h1 class="h2 fw-bold" style="color: #1e293b;">Vue d'ensemble</h1>
                 <div class="btn-toolbar mb-2 mb-md-0">
-                    <button type="button" class="btn btn-primary shadow-sm" style="border-radius: 8px;">
+                    <button type="button" class="btn btn-primary shadow-sm" style="border-radius: 8px;" data-bs-toggle="modal" data-bs-target="#modalNouvelleSeance">
                         <i class="bi bi-plus-lg me-1"></i> Nouvelle Séance
                     </button>
                 </div>
@@ -247,6 +247,42 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+</div>
+<!-- Modal pour ajouter une nouvelle séance -->
+<div class="modal fade" id="modalNouvelleSeance" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 12px; border: none;">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title fw-bold">Ajouter une séance</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="form-seance">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">ID ATHLÈTE</label>
+                        <input type="number" class="form-control" id="input-athlete-id" required placeholder="Ex: 1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">TITRE DE LA SÉANCE</label>
+                        <input type="text" class="form-control" id="input-titre" required placeholder="Ex: Push (Pecs/Triceps)">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small fw-bold">DATE</label>
+                            <input type="date" class="form-control" id="input-date" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small fw-bold">DURÉE (MIN)</label>
+                            <input type="number" class="form-control" id="input-duree" required placeholder="Ex: 90">
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary w-100 py-2" style="border-radius: 8px;">Enregistrer la séance</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>

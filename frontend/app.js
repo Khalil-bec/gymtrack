@@ -1,5 +1,3 @@
-// app.js
-
 // L'adresse de ton API Flask
 const API_URL = "http://localhost:5000";
 
@@ -10,7 +8,7 @@ async function chargerAthletes() {
         const athletes = await reponse.json();
 
         const listeHtml = document.getElementById("athletes-list");
-        listeHtml.innerHTML = ""; // On vide le texte "Chargement..."
+        listeHtml.innerHTML = "";
 
         athletes.forEach(athlete => {
             const li = document.createElement("li");
@@ -40,4 +38,49 @@ async function chargerAthletes() {
 // On lance la fonction dès que la page est chargée
 document.addEventListener("DOMContentLoaded", () => {
     chargerAthletes();
+});
+
+// Écouteur sur le formulaire de nouvelle séance
+document.getElementById("form-seance").addEventListener("submit", async (e) => {
+    e.preventDefault(); 
+
+    // On récupère les valeurs tapées par le coach
+    const athleteId = document.getElementById("input-athlete-id").value;
+    const titre = document.getElementById("input-titre").value;
+    const dateSeance = document.getElementById("input-date").value;
+    const duree = document.getElementById("input-duree").value;
+
+    const nouvelleSeance = {
+        athlete_id: Number.parseInt(athleteId, 10),
+        titre: (titre || "").trim(),
+        date_seance: dateSeance,
+        duree_min: parseInt(duree)
+    };
+
+    try {
+        //  On envoie les valeurs au serveur avec la méthode POST
+        const reponse = await fetch(`${API_URL}/seances`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(nouvelleSeance) 
+        });
+
+        if (reponse.ok) {
+            alert("✅ Séance enregistrée avec succès !");
+            
+            const modaleElement = document.getElementById('modalNouvelleSeance');
+            const modaleBootstrap = bootstrap.Modal.getInstance(modaleElement);
+            modaleBootstrap.hide();
+            
+            document.getElementById("form-seance").reset();
+
+        } else {
+            alert("❌ Erreur de l'API lors de l'enregistrement.");
+        }
+    } catch (erreur) {
+        console.error("Erreur réseau :", erreur);
+        alert("Impossible de contacter le serveur Flask.");
+    }
 });

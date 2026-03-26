@@ -2,6 +2,7 @@
 from flask import Flask, jsonify , request 
 from flask_cors import CORS
 import mysql.connector
+from mysql.connector import Error as MySQLError
 import os
 
 app = Flask(__name__)
@@ -38,16 +39,34 @@ def get_athletes():
 # La route /seances est une route qui permet de créer une nouvelle séance.
 @app.route("/seances", methods=["POST"])
 def create_seance():
-    data = request.get_json()
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute(
-        "INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES (%s,%s,%s,%s)",
-        (data["athlete_id"], data["titre"], data["date_seance"], data.get("duree_min"))
-    )
-    db.commit()
-    db.close()
-    return jsonify({"id": cursor.lastrowid}), 201
+    data = request.get_json(silent=True) or {}
+
+    athlete_id = data.get("athlete_id")
+    titre = data.get("titre")
+    date_seance = data.get("date_seance")
+    duree_min = data.get("duree_min")
+
+    missing = [k for k in ("athlete_id", "titre", "date_seance") if not data.get(k)]
+    if missing:
+        return jsonify({"error": "missing_fields", "missing": missing}), 400
+
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute(
+            "INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES (%s,%s,%s,%s)",
+            (athlete_id, titre, date_seance, duree_min)
+        )
+        db.commit()
+        new_id = cursor.lastrowid
+        db.close()
+        return jsonify({"id": new_id}), 201
+    except MySQLError as e:
+        try:
+            db.close()
+        except Exception:
+            pass
+        return jsonify({"error": "db_error", "message": str(e)}), 500
 
 
 # La route /seances est une route qui permet de récupérer toutes les séances de la base de données. 
