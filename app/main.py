@@ -35,6 +35,21 @@ def get_athletes():
     db.close()
     return jsonify(athletes)
 
+# La route /seances est une route qui permet de créer une nouvelle séance.
+@app.route("/seances", methods=["POST"])
+def create_seance():
+    data = request.get_json()
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES (%s,%s,%s,%s)",
+        (data["athlete_id"], data["titre"], data["date_seance"], data.get("duree_min"))
+    )
+    db.commit()
+    db.close()
+    return jsonify({"id": cursor.lastrowid}), 201
+
+
 # La route /seances est une route qui permet de récupérer toutes les séances de la base de données. 
 @app.route("/seances")
 def get_seances():
