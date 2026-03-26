@@ -1,9 +1,11 @@
 # app/main.py
-from flask import Flask, jsonify
+from flask import Flask, jsonify , request 
+from flask_cors import CORS
 import mysql.connector
 import os
 
 app = Flask(__name__)
+CORS(app)
 # La fonction get_db() permet d'obtenir une nouvelle connexion à la base de données MySQL. 
 # Elle utilise les variables d'environnement pour les paramètres de connexion,
 # avec des valeurs par défaut adaptées au conteneur Docker défini dans docker-compose.yml.
