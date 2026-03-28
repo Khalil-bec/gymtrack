@@ -38,6 +38,7 @@ async function chargerAthletes() {
 // On lance la fonction dès que la page est chargée
 document.addEventListener("DOMContentLoaded", () => {
     chargerAthletes();
+    chargerSeances();
 });
 
 // Écouteur sur le formulaire de nouvelle séance
@@ -95,19 +96,28 @@ async function chargerSeances() {
         console.log(seances);
         const listeHtml = document.querySelector("#seances-table tbody");
         listeHtml.innerHTML = "";
-        seances.forEach(seance => {
+        seances.forEach((seance) => {
             const tr = document.createElement("tr");
-            
-            // Formatage basique (tu pourras ajuster selon le nom exact de tes colonnes JSON)
             tr.innerHTML = `
                 <td class="ps-3"><span class="text-muted fw-bold">${seance.date_seance || "N/A"}</span></td>
                 <td><strong>Athlète #${seance.athlete_id}</strong></td>
                 <td>${seance.titre}</td>
                 <td>${seance.duree_min} min</td>
                 <td>
-                    <button class="btn btn-sm btn-light text-primary"><i class="bi bi-eye"></i> Détails</button>
+                    <button type="button" class="btn btn-sm btn-light text-primary btn-detail-seance">
+                        <i class="bi bi-eye"></i> Détails
+                    </button>
                 </td>
             `;
+            tr.querySelector(".btn-detail-seance").addEventListener("click", () => {
+                voirDetailsSeance(
+                    seance.id,
+                    seance.titre || "",
+                    String(seance.date_seance ?? ""),
+                    Number(seance.duree_min) || 0,
+                    seance.athlete_nom || ""
+                );
+            });
             listeHtml.appendChild(tr);
         });
     } catch (erreur) {
@@ -116,7 +126,67 @@ async function chargerSeances() {
     }
 }
 
-// On lance la fonction dès que la page est chargée
-document.addEventListener("DOMContentLoaded", () => {
-    chargerSeances();
-});
+// Fonction pour voir les détails d'une séance (résumé depuis la liste + logs depuis GET /seances/:id)
+async function voirDetailsSeance(seanceId, titre, dateSeance, dureeMin, athleteNom) {
+    try {
+        const reponse = await fetch(`${API_URL}/seances/${seanceId}`);
+        if (!reponse.ok) {
+            throw new Error(`HTTP ${reponse.status}`);
+        }
+        const lignes = await reponse.json();
+
+        document.getElementById("detail-titre").textContent = titre || "Séance";
+        document.getElementById("detail-date").textContent = dateSeance || "—";
+        document.getElementById("detail-duree").textContent =
+            dureeMin != null && dureeMin !== "" ? `${dureeMin} min` : "—";
+        document.getElementById("detail-athlete").textContent = athleteNom || "—";
+
+        const zone = document.getElementById("detail-exercices");
+        if (!Array.isArray(lignes) || lignes.length === 0) {
+            zone.innerHTML =
+                '<p class="text-muted small mb-0">Aucun exercice enregistré pour cette séance.</p>';
+        } else {
+            zone.innerHTML = `
+                <p class="text-muted small fw-bold mb-2">EXERCICES & SÉRIES</p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Exercice</th>
+                                <th>Série</th>
+                                <th>Poids (kg)</th>
+                                <th>Reps</th>
+                                <th>Repos (s)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${lignes
+                                .map(
+                                    (l) => `
+                                <tr>
+                                    <td>${escapeHtml(l.exercice)}</td>
+                                    <td>${l.numero_serie ?? "—"}</td>
+                                    <td>${l.poids_kg ?? "—"}</td>
+                                    <td>${l.repetitions ?? "—"}</td>
+                                    <td>${l.repos_sec ?? "—"}</td>
+                                </tr>`
+                                )
+                                .join("")}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        const modaleElement = document.getElementById("modalDetailsSeance");
+        bootstrap.Modal.getOrCreateInstance(modaleElement).show();
+    } catch (erreur) {
+        console.error("Erreur lors de la récupération des détails de la séance :", erreur);
+        alert("Impossible de récupérer les détails de la séance.");
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text == null ? "" : String(text);
+    return div.innerHTML;
+}
