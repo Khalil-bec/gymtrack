@@ -84,3 +84,39 @@ document.getElementById("form-seance").addEventListener("submit", async (e) => {
         alert("Impossible de contacter le serveur Flask.");
     }
 });
+
+
+
+// Charger les séances
+async function chargerSeances() {
+    try {
+        const reponse = await fetch(`${API_URL}/seances`);
+        const seances = await reponse.json();
+        console.log(seances);
+        const listeHtml = document.querySelector("#seances-table tbody");
+        listeHtml.innerHTML = "";
+        seances.forEach(seance => {
+            const tr = document.createElement("tr");
+            
+            // Formatage basique (tu pourras ajuster selon le nom exact de tes colonnes JSON)
+            tr.innerHTML = `
+                <td class="ps-3"><span class="text-muted fw-bold">${seance.date_seance || "N/A"}</span></td>
+                <td><strong>Athlète #${seance.athlete_id}</strong></td>
+                <td>${seance.titre}</td>
+                <td>${seance.duree_min} min</td>
+                <td>
+                    <button class="btn btn-sm btn-light text-primary"><i class="bi bi-eye"></i> Détails</button>
+                </td>
+            `;
+            listeHtml.appendChild(tr);
+        });
+    } catch (erreur) {
+        console.error("Erreur lors du chargement des séances :", erreur);
+        document.getElementById("seances-list").innerHTML = `<li class="list-group-item text-danger">Erreur de connexion à l'API</li>`;
+    }
+}
+
+// On lance la fonction dès que la page est chargée
+document.addEventListener("DOMContentLoaded", () => {
+    chargerSeances();
+});
