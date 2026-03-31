@@ -34,6 +34,11 @@ services:
         condition: service_healthy
     networks:
       - gymtrack-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
   adminer:
     image: adminer
