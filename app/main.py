@@ -2,7 +2,6 @@
 from flask import Flask, jsonify , request 
 from flask_cors import CORS
 import mysql.connector
-from mysql.connector import Error as MySQLError
 import os
 
 app = Flask(__name__)
@@ -64,7 +63,7 @@ def create_seance():
         new_id = cursor.lastrowid
         db.close()
         return jsonify({"id": new_id}), 201
-    except MySQLError as e:
+    except mysql.connector.MySQLError as e:
         try:
             db.close()
         except Exception:
