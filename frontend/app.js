@@ -190,3 +190,56 @@ function escapeHtml(text) {
     div.textContent = text == null ? "" : String(text);
     return div.innerHTML;
 }
+document.addEventListener('DOMContentLoaded', function() {
+    
+    
+    // 1. Cibler le canvas
+    const ctx = document.getElementById('volumeChart').getContext('2d');
+
+    // 2. Créer le graphique
+    const volumeChart = new Chart(ctx, {
+        type: 'line', // Type de graphique : 'line', 'bar', 'doughnut', etc.
+        data: {
+            // Les étiquettes sur l'axe X (ex: les jours ou les semaines)
+            labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+            datasets: [{
+                label: 'Volume (kg)',
+                data: [1200, 1900, 800, 2100, 1500, 2800, 0], // Tes données
+                borderColor: '#4f46e5', // Ta couleur primaire (bleu/violet)
+                backgroundColor: 'rgba(79, 70, 229, 0.1)', // Fond transparent sous la courbe
+                borderWidth: 3,
+                tension: 0.4, // Rend la courbe "douce" et arrondie
+                fill: true, // Remplissage sous la courbe
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#4f46e5',
+                pointRadius: 4      
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false, // Permet au graphique de s'adapter au conteneur (les 300px définis dans le HTML)
+            plugins: {
+                legend: {
+                    display: false // On cache la légende si c'est assez explicite avec le titre de la carte
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: '#f1f5f9' // Couleur de la grille (assortie à ton design)
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false // On cache la grille verticale pour un look plus épuré
+                    }
+                }
+            }
+        }
+    });
+});
