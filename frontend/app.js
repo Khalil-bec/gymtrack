@@ -99,8 +99,8 @@ async function chargerSeances() {
         seances.forEach((seance) => {
             const tr = document.createElement("tr");
             tr.innerHTML = `
-                <td class="ps-3"><span class="text-muted fw-bold">${seance.date_seance || "N/A"}</span></td>
-                <td><strong>Athlète #${seance.athlete_id}</strong></td>
+                <td class="ps-3"><span class="text-muted fw-bold">${new Date(seance.date_seance).toLocaleDateString() || "N/A"}</span></td>
+                <td><strong>${seance.athlete_nom}</strong></td>
                 <td>${seance.titre}</td>
                 <td>${seance.duree_min} min</td>
                 <td>
