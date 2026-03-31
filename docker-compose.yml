@@ -60,6 +60,8 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    volumes:
+      - ./frontend:/usr/share/nginx/html
 
     
 volumes:
