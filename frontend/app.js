@@ -41,6 +41,56 @@ document.addEventListener("DOMContentLoaded", () => {
     chargerSeances();
 });
 
+
+
+// Écouteur sur le formulaire du nouvel athlète
+document.getElementById("form-athlete").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const nom = document.getElementById('input-athlete-nom').value.trim();
+    const email = document.getElementById('input-athlete-email').value.trim();
+    const poidsValue = document.getElementById('input-athlete-poids').value.trim();
+    const errorDisplay = document.getElementById('form-athlete-error');
+
+    const payload = { nom, email };
+    if (poidsValue !== "") payload.poids_kg = parseFloat(poidsValue);
+
+    errorDisplay.classList.add('d-none');
+    errorDisplay.textContent = "";
+
+    try {
+        const response = await fetch(`${API_URL}/athletes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            console.log("Athlète créé avec l'ID:", data.id);
+            document.getElementById("form-athlete").reset();
+            bootstrap.Modal.getInstance(document.getElementById('modalNouvelAthlete')).hide();
+            chargerAthletes(); // rafraîchit la liste
+        } else {
+            errorDisplay.classList.remove('d-none');
+            if (response.status === 409) {
+                errorDisplay.textContent = "Cet email est déjà utilisé.";
+            } else if (response.status === 400 && data.missing) {
+                errorDisplay.textContent = `Champs manquants : ${data.missing.join(', ')}`;
+            } else {
+                errorDisplay.textContent = "Une erreur est survenue.";
+            }
+        }
+    } catch (error) {
+        console.error("Erreur réseau :", error);
+        errorDisplay.classList.remove('d-none');
+        errorDisplay.textContent = "Impossible de contacter le serveur.";
+    }
+});
+
+
+
 // Écouteur sur le formulaire de nouvelle séance
 document.getElementById("form-seance").addEventListener("submit", async (e) => {
     e.preventDefault(); 
