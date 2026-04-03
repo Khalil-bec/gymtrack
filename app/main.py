@@ -14,7 +14,7 @@ def get_db():
     return mysql.connector.connect(
         host=os.getenv("DB_HOST", "gymtrack-db"),
         user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "root123"),
+        password=os.getenv("DB_PASSWORD"),
         database=os.getenv("DB_NAME", "gymtrack"),
         charset="utf8mb4",
         collation="utf8mb4_0900_ai_ci",
