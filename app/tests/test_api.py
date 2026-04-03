@@ -1,6 +1,11 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
+# On importe l'objet app depuis main.py
+# pour pouvoir créer un client de test
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from main import app
 
 @pytest.fixture
