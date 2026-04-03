@@ -38,6 +38,52 @@ def get_athletes():
     db.close()
     return jsonify(athletes)
 
+
+# la route /athletes qui permet de creer  une nouvelle athlete
+@app.route("/athletes", methods=["POST"])
+def create_athlete():
+    data = request.get_json(silent=True) or {}
+
+    nom = (data.get("nom") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    poids_kg = data.get("poids_kg")
+
+    missing = []
+    if not nom:
+        missing.append("nom")
+    if not email:
+        missing.append("email")
+    if missing:
+        return jsonify({"error": "missing_fields", "missing": missing}), 400
+
+    if poids_kg is not None:
+        try:
+            poids_kg = float(poids_kg)
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid_field", "field": "poids_kg"}), 400
+
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute(
+            "INSERT INTO athletes (nom, email, poids_kg) VALUES (%s, %s, %s)",
+            (nom, email, poids_kg)
+        )
+        db.commit()
+        return jsonify({"id": cursor.lastrowid}), 201
+    except mysql.connector.IntegrityError:
+        return jsonify({"error": "email_already_exists"}), 409
+    except mysql.connector.MySQLError as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+
+
+
+
 # La route /seances est une route qui permet de créer une nouvelle séance.
 @app.route("/seances", methods=["POST"])
 def create_seance():
