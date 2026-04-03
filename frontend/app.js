@@ -55,7 +55,7 @@ document.getElementById("form-seance").addEventListener("submit", async (e) => {
         athlete_id: Number.parseInt(athleteId, 10),
         titre: (titre || "").trim(),
         date_seance: dateSeance,
-        duree_min: parseInt(duree)
+        duree_min: Number.parseInt(duree, 10) || null
     };
 
     try {
@@ -191,7 +191,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 document.addEventListener('DOMContentLoaded', function() {
-    
+
     
     // 1. Cibler le canvas
     const ctx = document.getElementById('volumeChart').getContext('2d');

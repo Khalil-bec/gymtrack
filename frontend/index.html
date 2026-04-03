@@ -283,8 +283,10 @@
             <div class="modal-body">
                 <form id="form-seance">
                     <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">ID ATHLÈTE</label>
-                        <input type="number" class="form-control" id="input-athlete-id" required placeholder="Ex: 1">
+                        <label class="form-label text-muted small fw-bold">ATHLÈTE</label>
+                        <select class="form-select" id="input-athlete-id" required>
+                            <option value="" selected disabled>Chargement des athlètes...</option>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">TITRE DE LA SÉANCE</label>
