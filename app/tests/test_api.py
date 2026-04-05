@@ -103,3 +103,40 @@ def test_create_athlete_empty_body(client):
     )
 
     assert res.status_code == 400        
+
+
+#test GET /seances
+def test_get_seances_status_200(client):
+    """GET /seances doit retourner HTTP 200."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [
+        {
+            "id": 1,
+            "athlete_id": 1,
+            "titre": "Push Day",
+            "date_seance": "2025-01-01",
+            "duree_min": 75,
+            "athlete_nom": "Khalil"
+        }
+    ]
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/seances")
+
+    assert res.status_code == 200
+
+
+def test_get_seances_returns_list(client):
+    """GET /seances doit retourner un tableau JSON."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = []
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/seances")
+
+    data = res.get_json()
+    assert isinstance(data, list)    
