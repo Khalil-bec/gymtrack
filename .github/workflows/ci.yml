@@ -29,14 +29,14 @@ jobs:
       - name: Lancer les tests pytest
         run: pytest app/tests/ -v
   
-    build:
-      name: Vérifier que Docker build sans erreur
-      runs-on: ubuntu-latest
+  build:
+    name: Vérifier que Docker build sans erreur
+    runs-on: ubuntu-latest
   
-      steps:
-        - name: Checkout du code
-          uses: actions/checkout@v4
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
   
         # On build uniquement l'image Flask pour vérifier que le Dockerfile est valide
-        - name: Build de l'image Docker Flask
-          run: docker build ./app -t gymtrack-app:ci
+      - name: Build de l'image Docker Flask
+        run: docker build ./app -t gymtrack-app:ci
