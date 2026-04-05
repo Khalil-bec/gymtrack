@@ -1,0 +1,37 @@
+name: CI - Build & Tests
+ 
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: Build Docker & Lancer les tests pytest
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout du code
+        uses: actions/checkout@v4
+
+    - name: Démarrer les conteneurs Docker
+        run: docker compose up -d --build              
+
+    - name: Attendre que l'API Flask soit disponible
+        run: |
+          echo "En attente de Flask sur localhost:5000..."
+          until curl -sf http://localhost:5000/health; do
+            echo "Pas encore prêt, nouvelle tentative dans 3s..."
+            sleep 3
+          done
+          echo "Flask est prêt !"
+
+    - name: Lancer les tests pytest
+        run: docker compose exec -T app pytest app/tests/ -v
+
+    - name: Arrêter les conteneurs
+        if: always()  
+        run: docker compose down          
