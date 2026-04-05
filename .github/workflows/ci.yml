@@ -10,28 +10,33 @@ on:
 
 jobs:
   test:
-    name: Build Docker & Lancer les tests pytest
+    name: Tests pytest (sans MySQL)
     runs-on: ubuntu-latest
-
+ 
     steps:
       - name: Checkout du code
         uses: actions/checkout@v4
+ 
+      - name: Installer Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+ 
 
-      - name: Démarrer les conteneurs Docker
-        run: docker compose up -d --build              
-
-      - name: Attendre que l'API Flask soit disponible
-        run: |
-          echo "En attente de Flask sur localhost:5000..."
-          until curl -sf http://localhost:5000/health; do
-            echo "Pas encore prêt, nouvelle tentative dans 3s..."
-            sleep 3
-          done
-          echo "Flask est prêt !"
-
+      - name: Installer les dépendances
+        run: pip install -r app/requirements.txt
+ 
       - name: Lancer les tests pytest
-        run: docker compose exec -T app pytest app/tests/ -v
-
-      - name: Arrêter les conteneurs
-        if: always()  
-        run: docker compose down          
+        run: pytest app/tests/ -v
+  
+    build:
+      name: Vérifier que Docker build sans erreur
+      runs-on: ubuntu-latest
+  
+      steps:
+        - name: Checkout du code
+          uses: actions/checkout@v4
+  
+        # On build uniquement l'image Flask pour vérifier que le Dockerfile est valide
+        - name: Build de l'image Docker Flask
+          run: docker build ./app -t gymtrack-app:ci
