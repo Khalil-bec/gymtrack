@@ -17,7 +17,7 @@ build:
 	docker compose build
 
 test:
-	docker compose exec -T app pytest app/tests/ -v
+	docker compose exec app pytest -v
 
 logs:
 	docker compose logs -f
