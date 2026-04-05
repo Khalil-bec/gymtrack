@@ -18,14 +18,9 @@ def test_health_status_200(client):
     """GET /health doit retourner HTTP 200."""
     res = client.get("/health")
     assert res.status_code == 200
- 
- 
-def test_health_json_content(client):
     """GET /health doit retourner {"status": "ok"}."""
-    res = client.get("/health")
     data = res.get_json()
-    assert data["status"] == "ok"        
-
+    assert data["status"] == "ok"   
 #test GET /athletes
 
 def test_get_athletes(client):
@@ -43,3 +38,5 @@ def test_get_athletes(client):
     data = res.get_json()
     assert isinstance(data, list)
     assert data[0]["nom"] == "Khalil"    
+
+    
