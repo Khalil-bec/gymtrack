@@ -25,3 +25,21 @@ def test_health_json_content(client):
     res = client.get("/health")
     data = res.get_json()
     assert data["status"] == "ok"        
+
+#test GET /athletes
+
+def test_get_athletes(client):
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [
+        {"id": 1, "nom": "Khalil", "email": "k@test.com", "poids_kg": 80.5}
+    ]
+    mock_db.cursor.return_value = mock_cursor
+ 
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/athletes")
+
+    assert res.status_code == 200
+    data = res.get_json()
+    assert isinstance(data, list)
+    assert data[0]["nom"] == "Khalil"    
