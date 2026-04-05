@@ -1,6 +1,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
+import json
 # On importe l'objet app depuis main.py
 # pour pouvoir créer un client de test
 import sys
@@ -39,4 +40,66 @@ def test_get_athletes(client):
     assert isinstance(data, list)
     assert data[0]["nom"] == "Khalil"    
 
-    
+
+#tests POST /athletes
+def test_create_athlete_success(client):
+    """POST /athletes avec données valides doit retourner 201 + un id."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.lastrowid = 42  
+    mock_db.cursor.return_value = mock_cursor
+
+    payload = {"nom": "Alice", "email": "alice@test.com", "poids_kg": 65.0}
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.post(
+            "/athletes",
+            data=json.dumps(payload),
+            content_type="application/json"
+        )
+
+    assert res.status_code == 201
+    data = res.get_json()
+    assert "id" in data
+    assert data["id"] == 42    
+
+def test_create_athlete_missing_nom(client):
+    """POST /athletes sans nom doit retourner 400 avec le champ manquant."""
+    payload = {"email": "alice@test.com"} 
+
+    res = client.post(
+        "/athletes",
+        data=json.dumps(payload),
+        content_type="application/json"
+    )
+
+    assert res.status_code == 400
+    data = res.get_json()
+    assert "missing" in data
+    assert "nom" in data["missing"]
+
+
+def test_create_athlete_missing_email(client):
+    """POST /athletes sans email doit retourner 400."""
+    payload = {"nom": "Bob"}  
+
+    res = client.post(
+        "/athletes",
+        data=json.dumps(payload),
+        content_type="application/json"
+    )
+
+    assert res.status_code == 400
+    data = res.get_json()
+    assert "email" in data["missing"]
+
+
+def test_create_athlete_empty_body(client):
+    """POST /athletes sans body doit retourner 400."""
+    res = client.post(
+        "/athletes",
+        data="{}",
+        content_type="application/json"
+    )
+
+    assert res.status_code == 400        
