@@ -7,334 +7,468 @@
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
         /* --- CSS Personnalisé pour un look "Pro" --- */
-        body {
-            background-color: #f4f7f6; /* Gris très doux pour le fond */
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ 
+        :root {
+            --bg:       #0d0f14;
+            --surface:  #141720;
+            --border:   #1f2330;
+            --muted:    #3d4458;
+            --text-dim: #6b7494;
+            --text:     #c8cde0;
+            --bright:   #edf0ff;
+            --accent:   #5b6ef4;
+            --accent-g: #7c8bf6;
+            --green:    #3ecf8e;
+            --red:      #f46b6b;
+            --mono: 'Inter', sans-serif;
+            --sans: 'Outfit', sans-serif;
+            --radius: 10px;
         }
-
-        /* Sidebar Styling */
+ 
+        html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 14px; }
+ 
+        /* LAYOUT */
+        .layout { display: flex; height: 100vh; overflow: hidden; }
+ 
+        /* SIDEBAR */
         .sidebar {
-            min-height: 100vh;
-            background-color: #1e293b; /* Bleu nuit très sombre et moderne */
-            color: #cbd5e1;
-            box-shadow: 4px 0 10px rgba(0,0,0,0.05);
+            width: 220px;
+            flex-shrink: 0;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 0;
         }
-        .sidebar-brand {
-            font-weight: 800;
-            color: #ffffff;
-            letter-spacing: 1px;
-            font-size: 1.5rem;
+        .logo {
+            font-family: var(--sans);
+            font-size: 26px;
+            font-weight: 900;
+            color: var(--bright);
+            padding: 0 20px 24px;
+            border-bottom: 1px solid var(--border);
+            letter-spacing: -0.8px;
+            margin-bottom: 10px;
         }
-        .nav-link {
-            color: #cbd5e1;
-            border-radius: 8px;
-            margin-bottom: 5px;
-            transition: all 0.3s ease;
-        }
-        .nav-link:hover, .nav-link.active {
-            background-color: #334155;
-            color: #ffffff;
-            transform: translateX(5px);
-        }
-        .nav-link i {
+        .logo i {
+            color: var(--accent);
             margin-right: 10px;
-            font-size: 1.2rem;
+            font-size: 1.4rem;
         }
-
-        /* Cartes (Cards) Styling */
-        .card {
-            border: none;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.03);
-            transition: transform 0.2s;
-        }
-        .card:hover {
-            transform: translateY(-2px);
-        }
-        .card-header {
-            background-color: #ffffff;
-            border-bottom: 1px solid #f1f5f9;
-            border-radius: 12px 12px 0 0 !important;
-            font-weight: 600;
-            padding: 1rem 1.25rem;
-        }
-
-        /* Statistiques en haut (KPIs) */
-        .icon-box {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
+        .logo span { color: var(--accent); }
+        .nav { padding: 16px 12px; flex: 1; }
+        .nav-item {
             display: flex;
             align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-        }
-        .bg-light-primary { background-color: #e0e7ff; color: #4f46e5; }
-        .bg-light-success { background-color: #dcfce7; color: #16a34a; }
-        .bg-light-warning { background-color: #fef3c7; color: #d97706; }
-
-        /* Tables */
-        .table-hover tbody tr:hover {
-            background-color: #f8fafc;
+            gap: 10px;
+            padding: 9px 12px;
+            border-radius: 7px;
+            color: var(--text-dim);
             cursor: pointer;
+            font-size: 13px;
+            transition: all .15s;
+            margin-bottom: 2px;
         }
+        .nav-item.active, .nav-item:hover { background: var(--border); color: var(--bright); }
+        .nav-item .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--muted);
+            flex-shrink: 0;
+        }
+        .nav-item.active .dot { background: var(--accent); }
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+        }
+        .avatar-row { display: flex; align-items: center; gap: 10px; }
         .avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: #e2e8f0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: #475569;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            font-family: var(--sans); font-weight: 700; font-size: 13px;
+            color: #fff; flex-shrink: 0;
         }
+        .avatar-name { font-size: 12px; color: var(--text); }
+        .avatar-role { font-size: 11px; color: var(--text-dim); }
+ 
+        /* MAIN */
+        .main { flex: 1; overflow-y: auto; padding: 32px 36px; }
+        .page-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            margin-bottom: 32px;
+        }
+        .page-title { font-family: var(--sans); font-size: 22px; font-weight: 700; color: var(--bright); }
+        .page-subtitle { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+ 
+        /* BTN */
+        .btn {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 9px 16px; border-radius: 7px; font-family: var(--mono);
+            font-size: 13px; cursor: pointer; border: none; transition: all .15s;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-g); }
+        .btn-outline-primary { background: transparent !important; color: var(--accent) !important; border: 1px solid var(--accent) !important; }
+        .btn-outline-primary:hover { background: var(--accent) !important; color: #fff !important; }
+        .btn-outline-custom { background: transparent !important; color: var(--accent) !important; border: 1px solid var(--accent) !important; }
+        .btn-outline-custom:hover { background: var(--accent) !important; color: #fff !important; }
+        .btn-ghost { background: var(--border); color: var(--text); }
+        .btn-ghost:hover { background: var(--muted); color: var(--bright); }
+        .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 5px; }
+ 
+        /* GRID */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+ 
+        /* CARD */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .card-title { font-family: var(--sans); font-weight: 600; font-size: 14px; color: var(--bright); }
+        .card-count {
+            font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+            background: var(--border); padding: 2px 8px; border-radius: 20px;
+        }
+        .card-body { padding: 0; }
+ 
+        /* ATHLETE LIST */
+        .athlete-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            transition: background .1s;
+        }
+        .athlete-item:last-child { border-bottom: none; }
+        .athlete-item:hover { background: rgba(255,255,255,.02); }
+        .athlete-av {
+            width: 34px; height: 34px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-family: var(--sans); font-weight: 700; font-size: 13px; color: #fff;
+            flex-shrink: 0;
+        }
+        .athlete-info { margin-left: 12px; flex: 1; }
+        .athlete-name { font-size: 13px; color: var(--bright); font-weight: 500; }
+        .athlete-meta { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+        .pill {
+            font-size: 11px; padding: 2px 8px; border-radius: 20px;
+            background: var(--border); color: var(--text-dim);
+        }
+ 
+        /* TABLE */
+        .table-wrap { 
+            overflow-x: auto; 
+            background: var(--surface) !important; 
+            border: 1px solid var(--border) !important; 
+            border-radius: 12px !important;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            background: var(--surface) !important;
+            color: var(--bright) !important;
+        }
+        thead tr { border-bottom: 1px solid var(--border) !important; }
+        th {
+            padding: 11px 16px !important; 
+            font-size: 11px !important; 
+            font-weight: 500 !important;
+            color: var(--text-dim) !important; 
+            text-align: left !important; 
+            text-transform: uppercase !important;
+            letter-spacing: .06em !important;
+            background: var(--surface) !important;
+            border-color: var(--border) !important;
+        }
+        td {
+            padding: 12px 16px !important; 
+            font-size: 13px !important; 
+            color: var(--bright) !important;
+            border-bottom: 1px solid var(--border) !important; 
+            background: var(--surface) !important;
+        }
+        tbody tr:last-child td { border-bottom: none !important; }
+        tbody tr:hover { background: rgba(91, 110, 244, 0.15) !important; }
+        .td-bold { color: var(--bright); font-weight: 500; }
+        .td-muted { color: var(--text-dim); font-size: 12px; }
+        .badge-dur {
+            display: inline-block; background: var(--border);
+            color: var(--text-dim); padding: 2px 8px; border-radius: 4px;
+            font-size: 12px;
+        }
+ 
+        /* CHART CARD */
+        .chart-card { margin-bottom: 20px; }
+        .chart-body { padding: 20px; }
+ 
+        /* EMPTY STATE */
+        .empty {
+            padding: 32px; text-align: center;
+            color: var(--text-dim); font-size: 12px;
+        }
+ 
+        /* MODAL */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,.65); backdrop-filter: blur(4px);
+            z-index: 100; align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            width: 420px; max-width: 92vw;
+            animation: modal-in .18s ease;
+        }
+        @keyframes modal-in {
+            from { transform: translateY(12px) scale(.97); opacity: 0; }
+            to   { transform: none; opacity: 1; }
+        }
+        .modal-head {
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-title { font-family: var(--sans); font-size: 16px; font-weight: 700; color: var(--bright); }
+        .modal-close {
+            background: none; border: none; color: var(--text-dim);
+            cursor: pointer; font-size: 18px; line-height: 1; padding: 2px;
+        }
+        .modal-close:hover { color: var(--bright); }
+        .modal-body { padding: 20px 24px; }
+        .modal-foot {
+            padding: 12px 24px 20px;
+            display: flex; gap: 10px; justify-content: flex-end;
+        }
+ 
+        /* FORM */
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block; font-size: 11px; font-weight: 500;
+            color: var(--text-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em;
+        }
+        .form-control {
+            width: 100%; padding: 9px 12px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 7px; color: var(--bright);
+            font-family: var(--mono); font-size: 13px;
+            outline: none; transition: border-color .15s;
+        }
+        .form-control:focus { border-color: var(--accent); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-error { font-size: 12px; color: var(--red); margin-top: 12px; display: none; }
+        .form-error.show { display: block; }
+        .list-group-item .text-muted,
+        .card .text-muted { color: #94a3b8 !important; }
+        .list-group-item h6,
+        #athletes-list h6 { color: var(--bright) !important; }
+        #athletes-list small { color: #94a3b8 !important; }
+ 
+        /* DETAIL MODAL */
+        .detail-hero {
+            text-align: center; padding: 12px 0 20px;
+        }
+        .detail-title { font-family: var(--sans); font-size: 18px; font-weight: 700; color: var(--bright); }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+        .detail-cell { background: var(--bg); padding: 14px; text-align: center; }
+        .detail-cell-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 5px; }
+        .detail-cell-val { font-size: 15px; color: var(--bright); font-weight: 500; }
+        .detail-exercices {
+            margin-top: 20px;
+        }
+        .detail-exercices p {
+            color: var(--bright) !important;
+            font-weight: 600 !important;
+            font-size: 13px !important;
+            text-transform: uppercase !important;
+            letter-spacing: .05em !important;
+        }
+        .detail-exercices table {
+            width: 100%;
+            background: var(--surface) !important;
+            color: var(--text) !important;
+            margin-bottom: 0 !important;
+            border-collapse: collapse;
+        }
+        .detail-exercices tr:not(:last-child) th,
+        .detail-exercices tr:not(:last-child) td {
+            border-bottom: 1px solid var(--border) !important;
+        }
+        .detail-exercices thead th {
+            color: var(--text-dim) !important;
+            background: var(--surface) !important;
+            padding: 12px 14px !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            text-transform: uppercase !important;
+            letter-spacing: .05em !important;
+            border: none !important;
+        }
+        .detail-exercices tbody td {
+            padding: 12px 14px !important;
+            color: var(--bright) !important;
+            font-size: 13px !important;
+            border: none !important;
+        }
+        .detail-exercices tbody tr:hover {
+            background: rgba(91, 110, 244, 0.1) !important;
+        }
+        #modalDetailsSeance .modal-body {
+            padding: 20px 24px;
+            background: var(--surface);
+        }
+ 
     </style>
 </head>
 <body>
 
-<div class="container-fluid p-0">
-    <div class="d-flex">
-        
-        <div class="sidebar d-flex flex-column flex-shrink-0 p-3" style="width: 260px;">
-            <a href="/" class="d-flex align-items-center mb-4 mt-2 text-decoration-none sidebar-brand px-2">
-                <i class="bi bi-lightning-charge-fill text-warning me-2"></i> GymTrack
-            </a>
-            <ul class="nav nav-pills flex-column mb-auto">
-                <li class="nav-item">
-                    <a href="#" class="nav-link active" aria-current="page">
-                        <i class="bi bi-grid-1x2-fill"></i> Tableau de bord
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link">
-                        <i class="bi bi-people-fill"></i> Mes Clients
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link">
-                        <i class="bi bi-calendar-check-fill"></i> Séances
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link">
-                        <i class="bi bi-graph-up-arrow"></i> Analyses
-                    </a>
-                </li>
-            </ul>
-            <hr style="border-color: #475569;">
-            <div class="px-2 pb-2">
-                <div class="d-flex align-items-center text-white text-decoration-none">
-                    <img src="https://ui-avatars.com/api/?name=Coach+K&background=0D8ABC&color=fff" alt="" width="32" height="32" class="rounded-circle me-2">
-                    <strong>Coach Khalil</strong>
-                </div>
+<div class="layout">
+    <main class="main">
+        <div class="page-header">
+            <div>
+                <div class="logo"><i class="bi bi-lightning-charge-fill"></i> Gym <span>Track</span></div>
+                <div class="page-title">Vue d'ensemble</div>
+                <div class="page-subtitle">Gestion rapide des athlètes et des séances.</div>
             </div>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNouvelleSeance">
+                <i class="bi bi-plus-lg"></i> Nouvelle séance
+            </button>
         </div>
 
-        <div class="flex-grow-1 p-4 px-md-5 overflow-auto" style="height: 100vh;">
-            
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
-                <h1 class="h2 fw-bold" style="color: #1e293b;">Vue d'ensemble</h1>
-                <div class="btn-toolbar mb-2 mb-md-0">
-                    <button type="button" class="btn btn-primary shadow-sm" style="border-radius: 8px;" data-bs-toggle="modal" data-bs-target="#modalNouvelleSeance">
-                        <i class="bi bi-plus-lg me-1"></i> Nouvelle Séance
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Athlètes</div>
+                        <div class="card-count">Liste</div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalNouvelAthlete">
+                        <i class="bi bi-person-plus"></i> Ajouter
                     </button>
                 </div>
-            </div>
-
-            <div class="row g-4 mb-4">
-                <div class="col-md-4">
-                    <div class="card p-3">
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box bg-light-primary me-3">
-                                <i class="bi bi-people"></i>
-                            </div>
-                            <div>
-                                <h6 class="text-muted mb-0">Clients Actifs</h6>
-                                <h3 class="fw-bold mb-0">12</h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card p-3">
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box bg-light-success me-3">
-                                <i class="bi bi-check2-circle"></i>
-                            </div>
-                            <div>
-                                <h6 class="text-muted mb-0">Séances cette semaine</h6>
-                                <h3 class="fw-bold mb-0">28</h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card p-3">
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box bg-light-warning me-3">
-                                <i class="bi bi-fire"></i>
-                            </div>
-                            <div>
-                                <h6 class="text-muted mb-0">Volume total (kg)</h6>
-                                <h3 class="fw-bold mb-0">14.5T</h3>
-                            </div>
-                        </div>
-                    </div>
+                <div class="card-body">
+                    <ul id="athletes-list"></ul>
                 </div>
             </div>
 
-            <div class="row g-4">
-                
-                <div class="col-lg-5">
-                    <div class="card h-100">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">Mes Athlètes</h5>
-                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalNouvelAthlete">
-                                <i class="bi bi-person-plus me-1"></i> Nouvel athlète
-                            </button>
-                        </div>
-                        <div class="card-body p-0">
-                            <ul class="list-group list-group-flush" id="athletes-list">
-                                <li class="list-group-item d-flex justify-content-between align-items-center p-3">
-                                    <div class="d-flex align-items-center">
-                                        <div class="avatar me-3">JD</div>
-                                        <div>
-                                            <h6 class="mb-0">John Doe</h6>
-                                            <small class="text-muted">Objectif : Hypertrophie</small>
-                                        </div>
-                                    </div>
-                                    <span class="badge bg-success rounded-pill">En forme</span>
-                                </li>
-                                </ul>
-                        </div>
-                    </div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Dernières séances</div>
                 </div>
-
-                
-
-                <div class="col-lg-7">
-                    <div class="card h-100">
-                        <div class="card-header">
-                            <h5 class="mb-0">Dernières Séances Enregistrées</h5>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-hover align-middle mb-0" id="seances-table">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th class="ps-3">Date</th>
-                                            <th>Client</th>
-                                            <th>Titre de la séance</th>
-                                            <th>Durée</th>
-                                            <th>Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td class="ps-3"><span class="text-muted">Aujourd'hui</span></td>
-                                            <td><strong>John Doe</strong></td>
-                                            <td>Push (Pecs/Triceps)</td>
-                                            <td>1h 15m</td>
-                                            <td>
-                                                <button class="btn btn-sm btn-light text-primary"><i class="bi bi-eye"></i> Détails</button>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-               
-            </div>
-            <div class="row g-4 mb-4">
-                <div class="col-12">
-                    <div class="card h-100">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">Évolution du volume total (kg)</h5>
-                            <select class="form-select form-select-sm w-auto">
-                                <option value="7">7 derniers jours</option>
-                                <option value="30" selected>30 derniers jours</option>
-                                <option value="365">Cette année</option>
-                            </select>
-                        </div>
-                        <div class="card-body">
-                            <div style="position: relative; height:300px; width:100%">
-                                <canvas id="volumeChart"></canvas>
-                            </div>
-                        </div>
+                <div class="card-body">
+                    <div class="table-wrap">
+                        <table id="seances-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Athlète</th>
+                                    <th>Titre</th>
+                                    <th>Durée</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-
         </div>
-    </div>
+
+        <div class="chart-card">
+            <div class="card-header">
+                <div class="card-title">Évolution du volume total (kg)</div>
+                <select class="form-control form-control-sm" style="width: auto; min-width: 140px;">
+                    <option value="7">7 derniers jours</option>
+                    <option value="30" selected>30 derniers jours</option>
+                    <option value="365">Cette année</option>
+                </select>
+            </div>
+            <div class="chart-body">
+                <div style="position: relative; height: 260px; width: 100%;">
+                    <canvas id="volumeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
 </div>
+
 <!-- Modal pour ajouter un athlète (POST /athletes) -->
 <div class="modal fade" id="modalNouvelAthlete" tabindex="-1" aria-labelledby="modalNouvelAthleteLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="border-radius: 12px; border: none;">
+        <div class="modal-content" style="border-radius: 12px; border: none; background: var(--surface);">
             <div class="modal-header border-bottom-0">
-                <h5 class="modal-title fw-bold" id="modalNouvelAthleteLabel">Nouvel athlète</h5>
+                <h5 class="modal-title fw-bold" id="modalNouvelAthleteLabel">Ajouter un athlète</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
             </div>
             <div class="modal-body">
                 <form id="form-athlete">
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">NOM</label>
-                        <input type="text" class="form-control" id="input-athlete-nom" required autocomplete="name" placeholder="Ex: Marie Dupont">
+                    <div class="form-group">
+                        <label class="form-label">Nom</label>
+                        <input type="text" class="form-control" id="input-athlete-nom" required autocomplete="name" placeholder="Marie Dupont">
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">EMAIL</label>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
                         <input type="email" class="form-control" id="input-athlete-email" required autocomplete="email" placeholder="exemple@mail.com">
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">POIDS (KG) <span class="text-muted fw-normal">— optionnel</span></label>
-                        <input type="number" class="form-control" id="input-athlete-poids" min="0" step="0.1" placeholder="Ex: 75.5">
+                    <div class="form-group">
+                        <label class="form-label">Poids (kg) <span style="color: var(--text-dim); font-weight: 400;">(optionnel)</span></label>
+                        <input type="number" class="form-control" id="input-athlete-poids" min="0" step="0.1" placeholder="75.5">
                     </div>
-                    <p id="form-athlete-error" class="text-danger small mb-0 d-none" role="alert"></p>
-                    <div class="mt-4">
-                        <button type="submit" class="btn btn-primary w-100 py-2" style="border-radius: 8px;">Enregistrer l'athlète</button>
+                    <p id="form-athlete-error" class="form-error" role="alert"></p>
+                    <div class="modal-foot">
+                        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Annuler</button>
+                        <button type="submit" class="btn btn-primary">Ajouter</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
 <!-- Modal pour ajouter une nouvelle séance -->
 <div class="modal fade" id="modalNouvelleSeance" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="border-radius: 12px; border: none;">
+        <div class="modal-content" style="border-radius: 12px; border: none; background: var(--surface);">
             <div class="modal-header border-bottom-0">
                 <h5 class="modal-title fw-bold">Ajouter une séance</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="form-seance">
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">ID ATHLÈTE</label>
-                        <input type="number" class="form-control" id="input-athlete-id" required placeholder="Ex: 1">
+                    <div class="form-group">
+                        <label class="form-label">ID athlète</label>
+                        <input type="number" class="form-control" id="input-athlete-id" required placeholder="1">
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">TITRE DE LA SÉANCE</label>
-                        <input type="text" class="form-control" id="input-titre" required placeholder="Ex: Push (Pecs/Triceps)">
+                    <div class="form-group">
+                        <label class="form-label">Titre de la séance</label>
+                        <input type="text" class="form-control" id="input-titre" required placeholder="Push (Pecs/Triceps)">
                     </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label text-muted small fw-bold">DATE</label>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Date</label>
                             <input type="date" class="form-control" id="input-date" required>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label text-muted small fw-bold">DURÉE (MIN)</label>
-                            <input type="number" class="form-control" id="input-duree" required placeholder="Ex: 90">
+                        <div class="form-group">
+                            <label class="form-label">Durée (min)</label>
+                            <input type="number" class="form-control" id="input-duree" required placeholder="90">
                         </div>
                     </div>
-                    <div class="mt-4">
-                        <button type="submit" class="btn btn-primary w-100 py-2" style="border-radius: 8px;">Enregistrer la séance</button>
+                    <div class="modal-foot">
+                        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Annuler</button>
+                        <button type="submit" class="btn btn-primary">Ajouter</button>
                     </div>
                 </form>
             </div>
@@ -345,32 +479,33 @@
 <!-- Modal pour voir les details d'une seance -->
 <div class="modal fade" id="modalDetailsSeance" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="border-radius: 12px; border: none;">
-            <div class="modal-header border-bottom-0 bg-light">
-                <h5 class="modal-title fw-bold text-primary">Détails de la séance</h5>
+        <div class="modal-content" style="border-radius: 12px; border: none; background: var(--surface);">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title fw-bold">Détails de la séance</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body p-4">
-                <h4 id="detail-titre" class="mb-4 text-center">Titre de la séance</h4>
-                
-                <ul class="list-group list-group-flush mb-3">
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <span class="text-muted small fw-bold">DATE</span>
-                        <span id="detail-date" class="fw-medium">...</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <span class="text-muted small fw-bold">DURÉE</span>
-                        <span id="detail-duree" class="fw-medium text-primary">...</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <span class="text-muted small fw-bold">ATHLÈTE</span>
-                        <span id="detail-athlete" class="fw-medium">...</span>
-                    </li>
-                </ul>
-                <div id="detail-exercices" class="mt-3"></div>
+            <div class="modal-body">
+                <div class="detail-hero">
+                    <div class="detail-title" id="detail-titre">Titre de la séance</div>
+                </div>
+                <div class="detail-grid mb-3">
+                    <div class="detail-cell">
+                        <div class="detail-cell-label">Date</div>
+                        <div class="detail-cell-val" id="detail-date">...</div>
+                    </div>
+                    <div class="detail-cell">
+                        <div class="detail-cell-label">Durée</div>
+                        <div class="detail-cell-val" id="detail-duree">...</div>
+                    </div>
+                    <div class="detail-cell">
+                        <div class="detail-cell-label">Athlète</div>
+                        <div class="detail-cell-val" id="detail-athlete">...</div>
+                    </div>
+                </div>
+                <div id="detail-exercices"></div>
             </div>
-            <div class="modal-footer border-top-0">
-                <button type="button" class="btn btn-secondary w-100" style="border-radius: 8px;" data-bs-dismiss="modal">Fermer</button>
+            <div class="modal-foot">
+                <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Fermer</button>
             </div>
         </div>
     </div>
