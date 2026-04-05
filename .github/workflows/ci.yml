@@ -15,7 +15,7 @@ jobs:
 
     steps:
     - name: Checkout du code
-        uses: actions/checkout@v4
+      uses: actions/checkout@v4
 
     - name: Démarrer les conteneurs Docker
         run: docker compose up -d --build              
