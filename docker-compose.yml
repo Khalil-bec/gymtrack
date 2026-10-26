@@ -41,8 +41,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    volumes:
-      - ./app:/app 
+
 
   adminer:
     image: adminer
@@ -59,7 +58,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "80:80"
+      - "8001:80"
     networks:
       - gymtrack-network
       - shared-net

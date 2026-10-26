@@ -10,7 +10,6 @@ RUN venv/bin/pip install -r requirements.txt
 
 
 FROM python:3.11-slim
-WORKDIR /app
 COPY main.py .
 COPY --from=builder /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
