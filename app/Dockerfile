@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS builder
+FROM python:3.11-alpine AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN venv/bin/pip install -r requirements.txt
 
 
 
-FROM python:3.11-slim
+FROM python:3.11-alpine
 COPY main.py .
 COPY --from=builder /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
