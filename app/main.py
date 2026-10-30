@@ -4,10 +4,12 @@ from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 import mysql.connector
 import datetime
+import math
 import os
 import re
 
 ER_DUP_ENTRY = 1062
+ER_NO_REFERENCED_ROW = 1452  # clé étrangère vers une ligne qui n'existe pas
 # Vérification simple : quelque chose@domaine.extension, sans espace
 EMAIL_VALIDE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -20,6 +22,61 @@ class JSONProvider(DefaultJSONProvider):
         if isinstance(o, datetime.date):
             return o.isoformat()
         return DefaultJSONProvider.default(o)
+
+
+# Lit un poids en kg : un nombre (ou du texte numérique) strictement entre 0 et 1000,
+# la limite de la colonne DECIMAL(5,2). Renvoie None si la valeur n'est pas un poids valide.
+def lire_poids(valeur):
+    if isinstance(valeur, bool):
+        return None
+    try:
+        poids = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(poids):
+        return None
+    # Arrondi au centième comme la colonne : 999.999 deviendrait 1000.00 (hors limites) et 0.001 deviendrait 0
+    poids = round(poids, 2)
+    if not 0 < poids < 1000:
+        return None
+    return poids
+
+
+# Lit une date "AAAA-MM-JJ" ; None si ce n'est pas du texte ou pas une vraie date (ex. 30 février).
+def lire_date(valeur):
+    if not isinstance(valeur, str):
+        return None
+    try:
+        return datetime.date.fromisoformat(valeur)
+    except ValueError:
+        return None
+
+
+# Corps JSON de la requête ; {} s'il est absent, invalide ou n'est pas un objet (liste, texte…).
+def lire_json():
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+# Poids actuel = dernière pesée ; évolution = dernière pesée − la plus récente pesée
+# datée au plus tard 28 jours avant aujourd'hui (None s'il n'y en a pas).
+# Les pesées datées après aujourd'hui sont ignorées, comme les séances futures.
+# Deux pesées le même jour : la dernière saisie (id le plus grand) compte, comme sur le graphique.
+def resume_poids(pesees, aujourdhui):
+    triees = sorted(
+        (pesee for pesee in pesees if pesee["date_pesee"] <= aujourdhui),
+        key=lambda pesee: (pesee["date_pesee"], pesee.get("id", 0)),
+    )
+    if not triees:
+        return {"poids_actuel": None, "evolution_4_semaines": None}
+    actuel = float(triees[-1]["poids_kg"])
+    limite = aujourdhui - datetime.timedelta(days=28)
+    anciennes = [pesee for pesee in triees if pesee["date_pesee"] <= limite]
+    # Si la dernière pesée est elle-même ancienne, il n'y a rien à comparer sur 4 semaines
+    if not anciennes or anciennes[-1] is triees[-1]:
+        return {"poids_actuel": actuel, "evolution_4_semaines": None}
+    evolution = round(actuel - float(anciennes[-1]["poids_kg"]), 2)
+    return {"poids_actuel": actuel, "evolution_4_semaines": evolution}
 
 
 app = Flask(__name__)
@@ -48,7 +105,8 @@ def health():
 
 
 # La route /athletes renvoie tous les athlètes (les "clients" de l'interface),
-# avec pour chacun la date de sa dernière séance et le nombre de séances sur les 4 dernières semaines.
+# avec pour chacun la date de sa dernière séance, le nombre de séances sur les 4 dernières semaines,
+# le poids actuel et son évolution sur 4 semaines.
 @app.route("/athletes")
 def get_athletes():
     db = None
@@ -56,7 +114,7 @@ def get_athletes():
         db = get_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("""
-            SELECT a.*,
+            SELECT a.*, CURDATE() AS aujourdhui,
                    MAX(CASE WHEN s.date_seance <= CURDATE() THEN s.date_seance END) AS derniere_seance,
                    COUNT(CASE WHEN s.date_seance > CURDATE() - INTERVAL 28 DAY AND s.date_seance <= CURDATE() THEN 1 END) AS seances_4_semaines
             FROM athletes a
@@ -64,7 +122,50 @@ def get_athletes():
             GROUP BY a.id
             ORDER BY a.nom
         """)
-        return jsonify(cursor.fetchall())
+        athletes = cursor.fetchall()
+        cursor.execute("SELECT id, athlete_id, date_pesee, poids_kg FROM pesees")
+        pesees_par_athlete = {}
+        for pesee in cursor.fetchall():
+            pesees_par_athlete.setdefault(pesee["athlete_id"], []).append(pesee)
+        for athlete in athletes:
+            aujourdhui = athlete.pop("aujourdhui")
+            athlete.update(resume_poids(pesees_par_athlete.get(athlete["id"], []), aujourdhui))
+        return jsonify(athletes)
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route /athletes/<id> renvoie le profil d'un client : ses infos, le résumé de ses séances
+# et son poids actuel avec l'évolution sur 4 semaines (calculés par resume_poids).
+@app.route("/athletes/<int:athlete_id>")
+def get_athlete(athlete_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        # CURDATE() vient de MySQL : la même date de référence que pour les séances
+        cursor.execute("""
+            SELECT a.id, a.nom, a.email, a.created_at, CURDATE() AS aujourdhui,
+                   MAX(CASE WHEN s.date_seance <= CURDATE() THEN s.date_seance END) AS derniere_seance,
+                   COUNT(CASE WHEN s.date_seance > CURDATE() - INTERVAL 28 DAY AND s.date_seance <= CURDATE() THEN 1 END) AS seances_4_semaines
+            FROM athletes a
+            LEFT JOIN seances s ON s.athlete_id = a.id
+            WHERE a.id = %s
+            GROUP BY a.id
+        """, (athlete_id,))
+        athlete = cursor.fetchone()
+        if athlete is None:
+            return jsonify({"error": "athlete_not_found"}), 404
+        cursor.execute(
+            "SELECT id, date_pesee, poids_kg FROM pesees WHERE athlete_id = %s",
+            (athlete_id,)
+        )
+        aujourdhui = athlete.pop("aujourdhui")
+        athlete.update(resume_poids(cursor.fetchall(), aujourdhui))
+        return jsonify(athlete)
     except mysql.connector.Error as e:
         return jsonify({"error": "db_error", "message": str(e)}), 500
     finally:
@@ -75,7 +176,7 @@ def get_athletes():
 # la route /athletes qui permet de creer  une nouvelle athlete
 @app.route("/athletes", methods=["POST"])
 def create_athlete():
-    data = request.get_json(silent=True) or {}
+    data = lire_json()
 
     for champ in ("nom", "email"):
         if data.get(champ) is not None and not isinstance(data[champ], str):
@@ -93,9 +194,8 @@ def create_athlete():
         return jsonify({"error": "invalid_field", "field": "email"}), 400
 
     if poids_kg is not None:
-        try:
-            poids_kg = float(poids_kg)
-        except (TypeError, ValueError):
+        poids_kg = lire_poids(poids_kg)
+        if poids_kg is None:
             return jsonify({"error": "invalid_field", "field": "poids_kg"}), 400
 
     db = None
@@ -103,11 +203,18 @@ def create_athlete():
         db = get_db()
         cursor = db.cursor()
         cursor.execute(
-            "INSERT INTO athletes (nom, email, poids_kg) VALUES (%s, %s, %s)",
-            (nom, email, poids_kg)
+            "INSERT INTO athletes (nom, email) VALUES (%s, %s)",
+            (nom, email)
         )
+        athlete_id = cursor.lastrowid
+        # Le poids de départ devient la première pesée, datée d'aujourd'hui (même transaction)
+        if poids_kg is not None:
+            cursor.execute(
+                "INSERT INTO pesees (athlete_id, date_pesee, poids_kg) VALUES (%s, CURDATE(), %s)",
+                (athlete_id, poids_kg)
+            )
         db.commit()
-        return jsonify({"id": cursor.lastrowid}), 201
+        return jsonify({"id": athlete_id}), 201
     except mysql.connector.IntegrityError as e:
         # 1062 = doublon sur une clé UNIQUE ; les autres violations de contrainte sont de vraies erreurs
         if e.errno == ER_DUP_ENTRY:
@@ -122,6 +229,90 @@ def create_athlete():
 
 
 
+
+
+# --- Pesées ---
+
+# La route /athletes/<id>/pesees renvoie les pesées d'un client, de la plus ancienne à la plus récente.
+@app.route("/athletes/<int:athlete_id>/pesees")
+def get_pesees(athlete_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,))
+        if cursor.fetchone() is None:
+            return jsonify({"error": "athlete_not_found"}), 404
+        cursor.execute(
+            "SELECT id, date_pesee, poids_kg FROM pesees WHERE athlete_id = %s ORDER BY date_pesee, id",
+            (athlete_id,)
+        )
+        # DECIMAL → nombre : sinon le JSON contient "80.50" (texte) et le graphique ne peut pas le tracer
+        pesees = [{**pesee, "poids_kg": float(pesee["poids_kg"])} for pesee in cursor.fetchall()]
+        return jsonify(pesees)
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route POST /athletes/<id>/pesees ajoute une pesée (date + poids) à un client.
+@app.route("/athletes/<int:athlete_id>/pesees", methods=["POST"])
+def create_pesee(athlete_id):
+    data = lire_json()
+
+    missing = [champ for champ in ("date_pesee", "poids_kg") if data.get(champ) in (None, "")]
+    if missing:
+        return jsonify({"error": "missing_fields", "missing": missing}), 400
+
+    date_pesee = lire_date(data["date_pesee"])
+    # Pas de pesée dans le futur ; un jour de marge car l'horloge du serveur (UTC) peut être
+    # en retard d'un jour sur celle du coach (ex. 0 h 30 à Paris = 23 h 30 la veille en UTC).
+    if date_pesee is None or date_pesee > datetime.date.today() + datetime.timedelta(days=1):
+        return jsonify({"error": "invalid_field", "field": "date_pesee"}), 400
+    poids_kg = lire_poids(data["poids_kg"])
+    if poids_kg is None:
+        return jsonify({"error": "invalid_field", "field": "poids_kg"}), 400
+
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute(
+            "INSERT INTO pesees (athlete_id, date_pesee, poids_kg) VALUES (%s, %s, %s)",
+            (athlete_id, date_pesee.isoformat(), poids_kg)
+        )
+        db.commit()
+        return jsonify({"id": cursor.lastrowid}), 201
+    except mysql.connector.IntegrityError as e:
+        if e.errno == ER_NO_REFERENCED_ROW:
+            return jsonify({"error": "athlete_not_found"}), 404
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route DELETE /pesees/<id> supprime une pesée saisie par erreur.
+@app.route("/pesees/<int:pesee_id>", methods=["DELETE"])
+def delete_pesee(pesee_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("DELETE FROM pesees WHERE id = %s", (pesee_id,))
+        db.commit()
+        if cursor.rowcount == 0:
+            return jsonify({"error": "pesee_not_found"}), 404
+        return "", 204
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
 
 
 # La route /seances est une route qui permet de créer une nouvelle séance.

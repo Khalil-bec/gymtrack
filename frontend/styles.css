@@ -134,7 +134,36 @@ tr:last-child td { border-bottom: none; }
 .attenue { color: var(--attenue); }
 
 .cellule-client { display: flex; align-items: center; gap: 12px; }
-.cellule-client .nom { font-weight: 700; color: var(--clair); }
+.cellule-client .nom { font-weight: 700; color: var(--clair); text-decoration: none; }
+.cellule-client a.nom:hover { color: var(--accent); }
+.carte-tableau table { min-width: 720px; }
+.carte-tableau th, .carte-tableau td { white-space: nowrap; }
+.tableau-compact { min-width: 0; }
+.fort { font-weight: 600; }
+.a-droite { text-align: right; }
+.lien-action { font-weight: 700; text-decoration: none; white-space: nowrap; }
+
+/* Bouton qui a l'air d'un lien (action sur la page, pas un changement d'adresse) */
+.lien {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: 600 14px var(--corps);
+    text-decoration: underline;
+    cursor: pointer;
+}
+.lien:hover { color: var(--clair); }
+
+/* Texte lu par les lecteurs d'écran mais invisible */
+.visuellement-cache {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
 .avatar {
     width: 40px;
     height: 40px;
@@ -149,6 +178,26 @@ tr:last-child td { border-bottom: none; }
     align-items: center;
     justify-content: center;
 }
+
+/* Profil client */
+.fil { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--attenue); }
+.fil a { font-weight: 600; text-decoration: none; }
+.entete-profil { align-items: center; }
+.identite { display: flex; gap: 16px; align-items: center; }
+.avatar-grand { width: 56px; height: 56px; font-size: 22px; }
+
+.tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.tuile { padding: 18px 20px; }
+.tuile p { margin: 0; }
+.tuile-libelle { font-size: 14px; font-weight: 600; color: var(--attenue); }
+.tuile .tuile-valeur { margin-top: 6px; font-family: var(--titre); font-size: 30px; font-weight: 700; color: var(--clair); }
+.tuile-detail { margin-left: 8px; font-family: var(--corps); font-size: 15px; font-weight: 600; color: var(--attenue); }
+
+.carte-tete { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.legende { margin: 0 0 8px; font-size: 14px; color: var(--attenue); }
+.zone-graphique { position: relative; height: 230px; margin-bottom: 8px; }
+.carte > .lien { margin-top: 8px; }
+.message-confirmation { margin: 8px 0 0; }
 
 /* États : chargement, vide, erreur */
 .etat {

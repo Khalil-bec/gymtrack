@@ -50,18 +50,20 @@ L'objectif n'est pas juste de faire tourner une app, c'est de construire une sta
 - Makefile avec raccourcis pour toutes les opérations courantes
 
 **Côté API :**
-- Validation des champs + gestion des erreurs HTTP (400, 409, 500)
+- Validation des champs + gestion des erreurs HTTP (400, 404, 409, 500)
 - CORS configuré pour les appels depuis le frontend
 - Jointures SQL multi-tables pour les endpoints de détail
 - Connexion DB via variables d'environnement
 
 **Côté tests :**
 - Tests unitaires avec mocks, aucune dépendance à MySQL au moment des tests
-- Cas couverts : succès, champs manquants, email facultatif, email invalide, email dupliqué, body vide
+- Cas couverts : succès, champs manquants, email facultatif, email invalide, email dupliqué, body vide, poids et dates invalides, client ou pesée introuvable (404)
+- Le calcul du poids actuel et de son évolution sur 4 semaines est une fonction Python testée directement
 
 **Côté frontend :**
 - Interface pour coachs servie par Nginx : HTML/CSS/JS sans framework ni étape de build (modules ES)
-- Navigation entre pages par l'adresse (`#/clients`, `#/exercices`)
+- Navigation entre pages par l'adresse (`#/clients`, `#/clients/3` pour un profil, `#/exercices`)
+- Graphique du poids de corps avec Chart.js (version exacte 4.6.1, vérifiée par empreinte `integrity`) et sa vue en tableau
 - Adresse de l'API dans un seul fichier, `frontend/config.js`
 - Formulaires en fenêtres `<dialog>` avec erreurs affichées sous le champ, messages temporaires au lieu d'`alert()`
 - Toutes les valeurs venant de l'API sont insérées comme du texte (aucun HTML injecté)
@@ -72,9 +74,10 @@ L'objectif n'est pas juste de faire tourner une app, c'est de construire une sta
 
 ```
 athletes ──< seances ──< exercice_logs ──< series
+    └─────< pesees
 ```
 
-4 tables relationnelles avec clés étrangères, contrainte UNIQUE sur l'email, et données de test insérées au démarrage.
+5 tables relationnelles avec clés étrangères, contrainte UNIQUE sur l'email, et données de test insérées au démarrage.
 
 ---
 
@@ -83,8 +86,12 @@ athletes ──< seances ──< exercice_logs ──< series
 | Méthode | Route | Description |
 |---|---|---|
 | GET | `/health` | Statut de l'API |
-| GET | `/athletes` | Liste des athlètes (clients), avec date de dernière séance et nombre de séances sur 4 semaines |
-| POST | `/athletes` | Créer un athlète (nom obligatoire ; email facultatif, unique s'il est donné ; poids_kg) |
+| GET | `/athletes` | Liste des athlètes (clients), avec date de dernière séance, nombre de séances sur 4 semaines, poids actuel et évolution sur 4 semaines |
+| POST | `/athletes` | Créer un athlète (nom obligatoire ; email facultatif, unique s'il est donné ; poids_kg facultatif, enregistré comme première pesée du jour) |
+| GET | `/athletes/<id>` | Profil d'un athlète : infos, résumé des séances, poids actuel et évolution (404 si inconnu) |
+| GET | `/athletes/<id>/pesees` | Pesées d'un athlète, de la plus ancienne à la plus récente |
+| POST | `/athletes/<id>/pesees` | Ajouter une pesée (date_pesee, poids_kg) |
+| DELETE | `/pesees/<id>` | Supprimer une pesée |
 | GET | `/seances` | Historique des séances avec nom de l'athlète |
 | POST | `/seances` | Créer une séance |
 | GET | `/seances/<id>` | Détail d'une séance — exercices + séries |

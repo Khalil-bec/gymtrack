@@ -1,6 +1,6 @@
 // Page d'accueil : la liste des clients du coach.
 import { api } from "../api.js";
-import { h, formatDate, toast, ouvrirModale, etat } from "../ui.js";
+import { h, formatDate, formatPoids, formatEvolution, toast, ouvrirModale, etat, initiales } from "../ui.js";
 
 export async function pageClients(conteneur) {
     const sousTitre = h("p", { class: "sous-titre" }, "");
@@ -52,11 +52,15 @@ function tableauClients(clients) {
             h("td", {},
                 h("div", { class: "cellule-client" },
                     h("div", { class: "avatar", "aria-hidden": "true" }, initiales(c.nom)),
-                    h("span", { class: "nom" }, c.nom),
+                    h("a", { class: "nom", href: `#/clients/${c.id}` }, c.nom),
                 ),
             ),
             h("td", { class: "attenue" }, formatDate(c.derniere_seance)),
             h("td", {}, c.seances_4_semaines),
+            h("td", { class: "fort" }, formatPoids(c.poids_actuel)),
+            h("td", { class: "attenue" }, formatEvolution(c.evolution_4_semaines)),
+            h("td", { class: "a-droite" },
+                h("a", { class: "lien-action", href: `#/clients/${c.id}`, "aria-label": `Voir le profil de ${c.nom}` }, "Voir le profil")),
         ),
     );
     return h("section", { class: "carte carte-tableau" },
@@ -66,6 +70,9 @@ function tableauClients(clients) {
                     h("th", { scope: "col" }, "Client"),
                     h("th", { scope: "col" }, "Dernière séance"),
                     h("th", { scope: "col" }, "Séances (4 sem.)"),
+                    h("th", { scope: "col" }, "Poids"),
+                    h("th", { scope: "col" }, "Évolution (4 sem.)"),
+                    h("th", { scope: "col" }, h("span", { class: "visuellement-cache" }, "Actions")),
                 )),
                 h("tbody", {}, lignes),
             ),
@@ -73,21 +80,21 @@ function tableauClients(clients) {
     );
 }
 
-function initiales(nom) {
-    return nom.split(/\s+/).filter(Boolean).slice(0, 2).map((mot) => Array.from(mot)[0].toUpperCase()).join("");
-}
-
-// Fenêtre "Nouveau client" : nom obligatoire, email facultatif.
+// Fenêtre "Nouveau client" : nom obligatoire ; email et poids de départ facultatifs.
 function formulaireClient(apresCreation) {
     ouvrirModale("Nouveau client", (fermer) => {
         const nom = h("input", { id: "client-nom", type: "text", required: true, autocomplete: "off" });
         const email = h("input", { id: "client-email", type: "email", autocomplete: "off" });
+        const poids = h("input", {
+            id: "client-poids", type: "number", min: "0.1", max: "999.99", step: "0.1", inputmode: "decimal",
+        });
         const erreur = h("p", { class: "erreur-formulaire", role: "alert" });
         const valider = h("button", { type: "submit", class: "btn btn-primaire" }, "Ajouter");
 
         const form = h("form", { class: "formulaire", novalidate: true },
             h("label", { for: "client-nom" }, "Nom"), nom,
             h("label", { for: "client-email" }, "Email ", h("span", { class: "facultatif" }, "(facultatif)")), email,
+            h("label", { for: "client-poids" }, "Poids de départ (kg) ", h("span", { class: "facultatif" }, "(facultatif)")), poids,
             erreur,
             h("div", { class: "actions" },
                 h("button", { type: "button", class: "btn", onClick: fermer }, "Annuler"),
@@ -103,11 +110,16 @@ function formulaireClient(apresCreation) {
                 nom.focus();
                 return;
             }
+            if (poids.validity.badInput) {
+                erreur.textContent = "Le poids doit être un nombre.";
+                poids.focus();
+                return;
+            }
             valider.disabled = true;
             try {
                 const reponse = await api("/athletes", {
                     method: "POST",
-                    body: { nom: nom.value, email: email.value },
+                    body: { nom: nom.value, email: email.value, poids_kg: poids.value || null },
                 });
                 if (reponse.ok) {
                     fermer();
@@ -119,6 +131,9 @@ function formulaireClient(apresCreation) {
                 } else if (reponse.status === 400 && reponse.data?.field === "email") {
                     erreur.textContent = "Cet email n'est pas valide.";
                     email.focus();
+                } else if (reponse.status === 400 && reponse.data?.field === "poids_kg") {
+                    erreur.textContent = "Le poids doit être compris entre 0 et 1000 kg.";
+                    poids.focus();
                 } else if (reponse.status === 400) {
                     erreur.textContent = "Le nom est obligatoire.";
                     nom.focus();

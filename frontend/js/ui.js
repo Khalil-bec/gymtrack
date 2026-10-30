@@ -17,11 +17,52 @@ export function h(tag, attrs = {}, ...enfants) {
     return el;
 }
 
+// "Khalil Becheikh" → "KB". Array.from découpe par caractère (un emoji en début de nom reste entier).
+export function initiales(nom) {
+    return nom.split(/\s+/).filter(Boolean).slice(0, 2).map((mot) => Array.from(mot)[0].toUpperCase()).join("");
+}
+
 // "2026-03-22" → "22/03/2026" ; vide → "—". Pas de new Date() pour éviter les décalages de fuseau.
 export function formatDate(iso) {
     if (!iso) return "—";
     const [annee, mois, jour] = iso.slice(0, 10).split("-");
     return `${jour}/${mois}/${annee}`;
+}
+
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+
+// "2026-03-22" → "22 mars 2026" ; vide → "—".
+export function formatDateLongue(iso) {
+    if (!iso) return "—";
+    const [annee, mois, jour] = iso.slice(0, 10).split("-");
+    return `${Number(jour)} ${MOIS[Number(mois) - 1]} ${annee}`;
+}
+
+// "2026-02-03T10:00:00" → "février 2026".
+export function formatMoisAnnee(iso) {
+    const [annee, mois] = iso.slice(0, 10).split("-");
+    return `${MOIS[Number(mois) - 1]} ${annee}`;
+}
+
+// Date du jour au format "AAAA-MM-JJ", à l'heure locale (valeur par défaut des champs date).
+export function aujourdhuiIso() {
+    const d = new Date();
+    return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
+}
+
+const nombre = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+
+// 80.5 → "80,5 kg" ; vide → "—".
+export function formatPoids(kg) {
+    return kg === null || kg === undefined ? "—" : `${nombre.format(kg)} kg`;
+}
+
+// -1.9 → "−1,9 kg" ; 0.4 → "+0,4 kg" ; vide → "—".
+export function formatEvolution(kg) {
+    if (kg === null || kg === undefined) return "—";
+    const signe = kg > 0 ? "+" : kg < 0 ? "−" : "";
+    return `${signe}${nombre.format(Math.abs(kg))} kg`;
 }
 
 // Message temporaire en bas de l'écran, à la place de alert().
@@ -55,4 +96,21 @@ export function ouvrirModale(titre, construireContenu) {
 // Zone d'état (chargement, vide, erreur) affichée à la place d'un contenu.
 export function etat(message, action) {
     return h("div", { class: "etat" }, h("p", {}, message), action);
+}
+
+// Fenêtre de confirmation (à la place de confirm()). Renvoie une promesse : true si l'utilisateur confirme.
+export function confirmer(titre, message, libelleAction) {
+    return new Promise((resoudre) => {
+        let reponse = false;
+        const dialog = ouvrirModale(titre, (fermer) =>
+            h("div", { class: "formulaire" },
+                h("p", { class: "message-confirmation" }, message),
+                h("div", { class: "actions" },
+                    h("button", { type: "button", class: "btn", onClick: fermer }, "Annuler"),
+                    h("button", { type: "button", class: "btn btn-primaire", onClick: () => { reponse = true; fermer(); } }, libelleAction),
+                ),
+            ),
+        );
+        dialog.addEventListener("close", () => resoudre(reponse));
+    });
 }

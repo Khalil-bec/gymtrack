@@ -4,8 +4,17 @@ CREATE TABLE IF NOT EXISTS athletes (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   nom        VARCHAR(100) NOT NULL,
   email      VARCHAR(150) UNIQUE,
-  poids_kg   DECIMAL(5,2),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Pesées : le poids de corps d'un client dans le temps (le poids actuel = la dernière pesée)
+CREATE TABLE IF NOT EXISTS pesees (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  athlete_id  INT NOT NULL,
+  date_pesee  DATE NOT NULL,
+  poids_kg    DECIMAL(5,2) NOT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (athlete_id) REFERENCES athletes(id)
 );
 
 CREATE TABLE IF NOT EXISTS seances (
@@ -38,8 +47,11 @@ CREATE TABLE IF NOT EXISTS series (
 );
 
 -- Données de test
-INSERT INTO athletes (nom, email, poids_kg) VALUES
-  ('Khalil', 'khalil@gymtrack.com', 80.5);
+INSERT INTO athletes (nom, email) VALUES
+  ('Khalil', 'khalil@gymtrack.com');
+
+INSERT INTO pesees (athlete_id, date_pesee, poids_kg) VALUES
+  (1, '2026-03-22', 80.5);
 
 INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES
   (1, 'Push Day — Poitrine/Épaules/Triceps', '2026-03-22', 75),
