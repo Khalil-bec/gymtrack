@@ -24,7 +24,7 @@ L'objectif n'est pas juste de faire tourner une app, c'est de construire une sta
 
 ```
 ┌──────────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Nginx :80       │────▶│  Flask API   │────▶│  MySQL 8.0  │
+│  Nginx :8001     │────▶│  Flask API   │────▶│  MySQL 8.0  │
 │  (frontend HTML) │     │  :5000       │     │  :3306      │
 └──────────────────┘     └──────────────┘     └─────────────┘
                                                     │
@@ -57,14 +57,14 @@ L'objectif n'est pas juste de faire tourner une app, c'est de construire une sta
 
 **Côté tests :**
 - Tests unitaires avec mocks, aucune dépendance à MySQL au moment des tests
-- Cas couverts : succès, champs manquants, email dupliqué, body vide
+- Cas couverts : succès, champs manquants, email facultatif, email invalide, email dupliqué, body vide
 
 **Côté frontend :**
-- Dashboard interactif servi par Nginx
-- Appels fetch vers l'API (GET + POST)
-- Formulaires modaux Bootstrap avec gestion des erreurs réseau
-- Graphique Chart.js (volume d'entraînement hebdomadaire)
-- Affichage détaillé des séances : exercices, séries, poids, répétitions
+- Interface pour coachs servie par Nginx : HTML/CSS/JS sans framework ni étape de build (modules ES)
+- Navigation entre pages par l'adresse (`#/clients`, `#/exercices`)
+- Adresse de l'API dans un seul fichier, `frontend/config.js`
+- Formulaires en fenêtres `<dialog>` avec erreurs affichées sous le champ, messages temporaires au lieu d'`alert()`
+- Toutes les valeurs venant de l'API sont insérées comme du texte (aucun HTML injecté)
 
 ---
 
@@ -83,8 +83,8 @@ athletes ──< seances ──< exercice_logs ──< series
 | Méthode | Route | Description |
 |---|---|---|
 | GET | `/health` | Statut de l'API |
-| GET | `/athletes` | Liste des athlètes |
-| POST | `/athletes` | Créer un athlète (nom, email, poids_kg) |
+| GET | `/athletes` | Liste des athlètes (clients), avec date de dernière séance et nombre de séances sur 4 semaines |
+| POST | `/athletes` | Créer un athlète (nom obligatoire ; email facultatif, unique s'il est donné ; poids_kg) |
 | GET | `/seances` | Historique des séances avec nom de l'athlète |
 | POST | `/seances` | Créer une séance |
 | GET | `/seances/<id>` | Détail d'une séance — exercices + séries |
@@ -102,7 +102,7 @@ docker compose up --build
 
 | Service | URL |
 |---|---|
-| Dashboard | http://localhost:80 |
+| Interface | http://localhost:8001 |
 | API Flask | http://localhost:5000/health |
 | Adminer | http://localhost:8080 |
 

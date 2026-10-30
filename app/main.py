@@ -1,10 +1,29 @@
 # app/main.py
-from flask import Flask, jsonify , request 
+from flask import Flask, jsonify , request
+from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 import mysql.connector
+import datetime
 import os
+import re
+
+ER_DUP_ENTRY = 1062
+# Vérification simple : quelque chose@domaine.extension, sans espace
+EMAIL_VALIDE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+# Les dates sortent en ISO 8601 ("2026-03-22") au lieu du format HTTP de Flask
+# ("Sun, 22 Mar 2026 00:00:00 GMT"), plus simple à lire et à afficher côté frontend.
+class JSONProvider(DefaultJSONProvider):
+    @staticmethod
+    def default(o):
+        if isinstance(o, datetime.date):
+            return o.isoformat()
+        return DefaultJSONProvider.default(o)
+
 
 app = Flask(__name__)
+app.json = JSONProvider(app)
 CORS(app)
 # La fonction get_db() permet d'obtenir une nouvelle connexion à la base de données MySQL. 
 # Elle utilise les variables d'environnement pour les paramètres de connexion,
@@ -28,15 +47,29 @@ def health():
     return jsonify({"status": "ok"})
 
 
-# La route /athletes est une route qui permet de récupérer tous les athlètes de la base de données.
+# La route /athletes renvoie tous les athlètes (les "clients" de l'interface),
+# avec pour chacun la date de sa dernière séance et le nombre de séances sur les 4 dernières semaines.
 @app.route("/athletes")
 def get_athletes():
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM athletes")
-    athletes = cursor.fetchall()
-    db.close()
-    return jsonify(athletes)
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT a.*,
+                   MAX(CASE WHEN s.date_seance <= CURDATE() THEN s.date_seance END) AS derniere_seance,
+                   COUNT(CASE WHEN s.date_seance > CURDATE() - INTERVAL 28 DAY AND s.date_seance <= CURDATE() THEN 1 END) AS seances_4_semaines
+            FROM athletes a
+            LEFT JOIN seances s ON s.athlete_id = a.id
+            GROUP BY a.id
+            ORDER BY a.nom
+        """)
+        return jsonify(cursor.fetchall())
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
 
 
 # la route /athletes qui permet de creer  une nouvelle athlete
@@ -44,17 +77,20 @@ def get_athletes():
 def create_athlete():
     data = request.get_json(silent=True) or {}
 
+    for champ in ("nom", "email"):
+        if data.get(champ) is not None and not isinstance(data[champ], str):
+            return jsonify({"error": "invalid_field", "field": champ}), 400
+
     nom = (data.get("nom") or "").strip()
-    email = (data.get("email") or "").strip().lower()
+    # L'email est facultatif : vide → NULL, pour que la contrainte UNIQUE ignore les clients sans email
+    email = (data.get("email") or "").strip().lower() or None
     poids_kg = data.get("poids_kg")
 
-    missing = []
     if not nom:
-        missing.append("nom")
-    if not email:
-        missing.append("email")
-    if missing:
-        return jsonify({"error": "missing_fields", "missing": missing}), 400
+        return jsonify({"error": "missing_fields", "missing": ["nom"]}), 400
+
+    if email is not None and not EMAIL_VALIDE.match(email):
+        return jsonify({"error": "invalid_field", "field": "email"}), 400
 
     if poids_kg is not None:
         try:
@@ -62,6 +98,7 @@ def create_athlete():
         except (TypeError, ValueError):
             return jsonify({"error": "invalid_field", "field": "poids_kg"}), 400
 
+    db = None
     try:
         db = get_db()
         cursor = db.cursor()
@@ -71,9 +108,12 @@ def create_athlete():
         )
         db.commit()
         return jsonify({"id": cursor.lastrowid}), 201
-    except mysql.connector.IntegrityError:
-        return jsonify({"error": "email_already_exists"}), 409
-    except mysql.connector.MySQLError as e:
+    except mysql.connector.IntegrityError as e:
+        # 1062 = doublon sur une clé UNIQUE ; les autres violations de contrainte sont de vraies erreurs
+        if e.errno == ER_DUP_ENTRY:
+            return jsonify({"error": "email_already_exists"}), 409
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    except mysql.connector.Error as e:
         return jsonify({"error": "db_error", "message": str(e)}), 500
     finally:
         if db is not None:

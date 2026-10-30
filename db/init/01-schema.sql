@@ -3,7 +3,7 @@ SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 CREATE TABLE IF NOT EXISTS athletes (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   nom        VARCHAR(100) NOT NULL,
-  email      VARCHAR(150) UNIQUE NOT NULL,
+  email      VARCHAR(150) UNIQUE,
   poids_kg   DECIMAL(5,2),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
