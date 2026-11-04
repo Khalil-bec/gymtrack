@@ -80,21 +80,28 @@ function tableauClients(clients) {
     );
 }
 
-// Fenêtre "Nouveau client" : nom obligatoire ; email et poids de départ facultatifs.
-function formulaireClient(apresCreation) {
-    ouvrirModale("Nouveau client", (fermer) => {
-        const nom = h("input", { id: "client-nom", type: "text", required: true, autocomplete: "off" });
-        const email = h("input", { id: "client-email", type: "email", autocomplete: "off" });
-        const poids = h("input", {
+// Fenêtre "Nouveau client" (nom obligatoire ; email et poids de départ facultatifs)
+// ou, si on lui passe un client, "Modifier le client" : nom et email pré-remplis, sans poids
+// (le poids se corrige par les pesées).
+export function formulaireClient(apresEnregistrement, client = null) {
+    const modification = client !== null;
+    ouvrirModale(modification ? "Modifier le client" : "Nouveau client", (fermer) => {
+        // maxlength = longueur des colonnes athletes.nom et athletes.email
+        const nom = h("input", {
+            id: "client-nom", type: "text", required: true, maxlength: "100", autocomplete: "off", value: client?.nom ?? "",
+        });
+        const email = h("input", { id: "client-email", type: "email", maxlength: "150", autocomplete: "off", value: client?.email ?? "" });
+        const poids = modification ? null : h("input", {
             id: "client-poids", type: "number", min: "0.1", max: "999.99", step: "0.1", inputmode: "decimal",
         });
         const erreur = h("p", { class: "erreur-formulaire", role: "alert" });
-        const valider = h("button", { type: "submit", class: "btn btn-primaire" }, "Ajouter");
+        const valider = h("button", { type: "submit", class: "btn btn-primaire" }, modification ? "Enregistrer" : "Ajouter");
 
         const form = h("form", { class: "formulaire", novalidate: true },
             h("label", { for: "client-nom" }, "Nom"), nom,
             h("label", { for: "client-email" }, "Email ", h("span", { class: "facultatif" }, "(facultatif)")), email,
-            h("label", { for: "client-poids" }, "Poids de départ (kg) ", h("span", { class: "facultatif" }, "(facultatif)")), poids,
+            poids && h("label", { for: "client-poids" }, "Poids de départ (kg) ", h("span", { class: "facultatif" }, "(facultatif)")),
+            poids,
             erreur,
             h("div", { class: "actions" },
                 h("button", { type: "button", class: "btn", onClick: fermer }, "Annuler"),
@@ -110,33 +117,43 @@ function formulaireClient(apresCreation) {
                 nom.focus();
                 return;
             }
-            if (poids.validity.badInput) {
+            if (poids?.validity.badInput) {
                 erreur.textContent = "Le poids doit être un nombre.";
                 poids.focus();
                 return;
             }
             valider.disabled = true;
             try {
-                const reponse = await api("/athletes", {
-                    method: "POST",
-                    body: { nom: nom.value, email: email.value, poids_kg: poids.value || null },
-                });
+                const reponse = modification
+                    ? await api(`/athletes/${client.id}`, { method: "PUT", body: { nom: nom.value, email: email.value } })
+                    : await api("/athletes", {
+                        method: "POST",
+                        body: { nom: nom.value, email: email.value, poids_kg: poids.value || null },
+                    });
                 if (reponse.ok) {
                     fermer();
-                    toast("Client ajouté.");
-                    apresCreation();
+                    toast(modification ? "Client modifié." : "Client ajouté.");
+                    apresEnregistrement();
                 } else if (reponse.status === 409) {
                     erreur.textContent = "Cet email est déjà utilisé par un autre client.";
                     email.focus();
                 } else if (reponse.status === 400 && reponse.data?.field === "email") {
                     erreur.textContent = "Cet email n'est pas valide.";
                     email.focus();
-                } else if (reponse.status === 400 && reponse.data?.field === "poids_kg") {
+                } else if (reponse.status === 400 && reponse.data?.field === "nom") {
+                    erreur.textContent = "Le nom est trop long.";
+                    nom.focus();
+                } else if (reponse.status === 400 && poids && reponse.data?.field === "poids_kg") {
                     erreur.textContent = "Le poids doit être compris entre 0 et 1000 kg.";
                     poids.focus();
                 } else if (reponse.status === 400) {
                     erreur.textContent = "Le nom est obligatoire.";
                     nom.focus();
+                } else if (reponse.status === 404) {
+                    // Client supprimé entre-temps : on ferme et on recharge, la page affiche « introuvable »
+                    fermer();
+                    toast("Ce client n'existe plus.", "erreur");
+                    apresEnregistrement();
                 } else {
                     erreur.textContent = "Le serveur a renvoyé une erreur. Réessayez.";
                 }
@@ -146,7 +163,7 @@ function formulaireClient(apresCreation) {
                 valider.disabled = false;
                 // Fenêtre fermée (Échap, Annuler) pendant l'envoi : l'erreur part en message temporaire pour ne pas être perdue.
                 if (!form.isConnected && erreur.textContent) {
-                    toast(`Client non ajouté : ${erreur.textContent}`, "erreur");
+                    toast(`${modification ? "Client non modifié" : "Client non ajouté"} : ${erreur.textContent}`, "erreur");
                 }
             }
         });

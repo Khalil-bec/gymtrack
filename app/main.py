@@ -3,6 +3,7 @@ from flask import Flask, jsonify , request
 from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 import mysql.connector
+from mysql.connector.constants import ClientFlag
 import datetime
 import math
 import os
@@ -12,6 +13,9 @@ ER_DUP_ENTRY = 1062
 ER_NO_REFERENCED_ROW = 1452  # clé étrangère vers une ligne qui n'existe pas
 # Vérification simple : quelque chose@domaine.extension, sans espace
 EMAIL_VALIDE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Longueurs maximales des colonnes athletes.nom et athletes.email (db/init/01-schema.sql)
+NOM_MAX = 100
+EMAIL_MAX = 150
 
 
 # Les dates sortent en ISO 8601 ("2026-03-22") au lieu du format HTTP de Flask
@@ -58,6 +62,27 @@ def lire_json():
     return data if isinstance(data, dict) else {}
 
 
+# Lit et nettoie le nom et l'email d'un client (création et modification).
+# Renvoie (nom, email, erreur) : erreur est le corps JSON d'une 400, ou None si tout est valide.
+def lire_infos_athlete(data):
+    for champ in ("nom", "email"):
+        if data.get(champ) is not None and not isinstance(data[champ], str):
+            return None, None, {"error": "invalid_field", "field": champ}
+
+    nom = (data.get("nom") or "").strip()
+    # L'email est facultatif : vide → NULL, pour que la contrainte UNIQUE ignore les clients sans email
+    email = (data.get("email") or "").strip().lower() or None
+
+    if not nom:
+        return None, None, {"error": "missing_fields", "missing": ["nom"]}
+    # Mêmes limites que les colonnes (VARCHAR) : sinon MySQL refuse et on renverrait une 500
+    if len(nom) > NOM_MAX:
+        return None, None, {"error": "invalid_field", "field": "nom"}
+    if email is not None and (len(email) > EMAIL_MAX or not EMAIL_VALIDE.match(email)):
+        return None, None, {"error": "invalid_field", "field": "email"}
+    return nom, email, None
+
+
 # Poids actuel = dernière pesée ; évolution = dernière pesée − la plus récente pesée
 # datée au plus tard 28 jours avant aujourd'hui (None s'il n'y en a pas).
 # Les pesées datées après aujourd'hui sont ignorées, comme les séances futures.
@@ -94,7 +119,10 @@ def get_db():
         database=os.getenv("DB_NAME", "gymtrack"),
         charset="utf8mb4",
         collation="utf8mb4_0900_ai_ci",
-        use_unicode=True
+        use_unicode=True,
+        # rowcount d'un UPDATE = lignes trouvées, pas seulement modifiées : enregistrer un client
+        # sans rien changer donne 1, pas 0, et 0 veut donc bien dire « client inconnu ».
+        client_flags=[ClientFlag.FOUND_ROWS]
     )
 
     
@@ -178,21 +206,11 @@ def get_athlete(athlete_id):
 def create_athlete():
     data = lire_json()
 
-    for champ in ("nom", "email"):
-        if data.get(champ) is not None and not isinstance(data[champ], str):
-            return jsonify({"error": "invalid_field", "field": champ}), 400
+    nom, email, erreur = lire_infos_athlete(data)
+    if erreur:
+        return jsonify(erreur), 400
 
-    nom = (data.get("nom") or "").strip()
-    # L'email est facultatif : vide → NULL, pour que la contrainte UNIQUE ignore les clients sans email
-    email = (data.get("email") or "").strip().lower() or None
     poids_kg = data.get("poids_kg")
-
-    if not nom:
-        return jsonify({"error": "missing_fields", "missing": ["nom"]}), 400
-
-    if email is not None and not EMAIL_VALIDE.match(email):
-        return jsonify({"error": "invalid_field", "field": "email"}), 400
-
     if poids_kg is not None:
         poids_kg = lire_poids(poids_kg)
         if poids_kg is None:
@@ -227,8 +245,35 @@ def create_athlete():
             db.close()
 
 
+# La route PUT /athletes/<id> modifie le nom et l'email d'un client (pour corriger une faute de frappe).
+# Les clients ne se suppriment pas : ça effacerait tout leur historique.
+@app.route("/athletes/<int:athlete_id>", methods=["PUT"])
+def update_athlete(athlete_id):
+    nom, email, erreur = lire_infos_athlete(lire_json())
+    if erreur:
+        return jsonify(erreur), 400
 
-
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute(
+            "UPDATE athletes SET nom = %s, email = %s WHERE id = %s",
+            (nom, email, athlete_id)
+        )
+        if cursor.rowcount == 0:
+            return jsonify({"error": "athlete_not_found"}), 404
+        db.commit()
+        return jsonify({"id": athlete_id, "nom": nom, "email": email}), 200
+    except mysql.connector.IntegrityError as e:
+        if e.errno == ER_DUP_ENTRY:
+            return jsonify({"error": "email_already_exists"}), 409
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
 
 
 # --- Pesées ---

@@ -183,6 +183,7 @@ tr:last-child td { border-bottom: none; }
 .fil { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--attenue); }
 .fil a { font-weight: 600; text-decoration: none; }
 .entete-profil { align-items: center; }
+.actions-entete { display: flex; flex-wrap: wrap; gap: 12px; }
 .identite { display: flex; gap: 16px; align-items: center; }
 .avatar-grand { width: 56px; height: 56px; font-size: 22px; }
 

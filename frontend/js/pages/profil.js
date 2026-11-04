@@ -4,6 +4,7 @@ import {
     h, formatDate, formatDateLongue, formatMoisAnnee, formatPoids, formatEvolution,
     aujourdhuiIso, toast, ouvrirModale, confirmer, etat, initiales,
 } from "../ui.js";
+import { formulaireClient } from "./clients.js";
 
 export async function pageProfil(conteneur, id) {
     // Graphique de cette page : détruit avant d'en dessiner un autre et quand on quitte la page,
@@ -81,7 +82,10 @@ export async function pageProfil(conteneur, id) {
                     h("div", { class: "avatar avatar-grand", "aria-hidden": "true" }, initiales(client.nom)),
                     h("div", {}, h("h1", {}, client.nom), h("p", { class: "sous-titre" }, sousTitre)),
                 ),
-                h("button", { type: "button", class: "btn", onClick: () => formulairePesee(id, charger) }, "Ajouter une pesée"),
+                h("div", { class: "actions-entete" },
+                    h("button", { type: "button", class: "btn", onClick: () => formulaireClient(charger, client) }, "Modifier"),
+                    h("button", { type: "button", class: "btn", onClick: () => formulairePesee(id, charger) }, "Ajouter une pesée"),
+                ),
             ),
             h("section", { class: "tuiles", "aria-label": "Résumé" },
                 tuile("Dernière séance", formatDateLongue(client.derniere_seance)),

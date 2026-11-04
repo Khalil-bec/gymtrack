@@ -605,3 +605,110 @@ def test_create_pesee_date_future(client):
 
     assert res.status_code == 400
     assert res.get_json() == {"error": "invalid_field", "field": "date_pesee"}
+
+
+# tests PUT /athletes/<id>
+def modifier_athlete(client, athlete_id, payload, rowcount=1):
+    """Envoie un PUT /athletes/<id> avec un get_db mocké ; rowcount = lignes trouvées par l'UPDATE (0 = client inconnu)."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.rowcount = rowcount
+    mock_db.cursor.return_value = mock_cursor
+    with patch("main.get_db", return_value=mock_db):
+        res = client.put(
+            f"/athletes/{athlete_id}",
+            data=json.dumps(payload),
+            content_type="application/json"
+        )
+    return res, mock_db, mock_cursor
+
+
+def test_update_athlete_success(client):
+    """PUT /athletes/<id> met à jour le nom et l'email (nettoyés comme à la création) et renvoie le client modifié."""
+    res, mock_db, mock_cursor = modifier_athlete(client, 3, {"nom": " Paulo Dybala ", "email": "Paulo@GymTrack.com"})
+
+    assert res.status_code == 200
+    assert res.get_json() == {"id": 3, "nom": "Paulo Dybala", "email": "paulo@gymtrack.com"}
+    assert mock_cursor.execute.call_args[0][1] == ("Paulo Dybala", "paulo@gymtrack.com", 3)
+    mock_db.commit.assert_called_once()
+
+
+def test_update_athlete_inconnu_404(client):
+    """PUT /athletes/<id> pour un client qui n'existe pas (aucune ligne trouvée) doit retourner 404, sans valider."""
+    res, mock_db, _ = modifier_athlete(client, 999, {"nom": "Personne"}, rowcount=0)
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "athlete_not_found"}
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("payload", [{"email": "a@test.com"}, {"nom": "   ", "email": "a@test.com"}])
+def test_update_athlete_nom_manquant(client, payload):
+    """PUT /athletes/<id> sans nom (absent ou que des espaces) doit retourner 400 missing_fields nom."""
+    res, mock_db, _ = modifier_athlete(client, 3, payload)
+
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "missing_fields", "missing": ["nom"]}
+    mock_db.cursor.assert_not_called()
+
+
+@pytest.mark.parametrize("payload, champ", [
+    ({"nom": "Paulo", "email": "pas-un-email"}, "email"),
+    ({"nom": 5}, "nom"),
+    ({"nom": "Paulo", "email": ["a@test.com"]}, "email"),
+    ({"nom": "x" * 101}, "nom"),
+    ({"nom": "Paulo", "email": "a" * 140 + "@gymtrack.com"}, "email"),
+])
+def test_update_athlete_champ_invalide(client, payload, champ):
+    """PUT /athletes/<id> : email mal formé, champ qui n'est pas du texte ou trop long pour sa colonne → 400 invalid_field."""
+    res, mock_db, _ = modifier_athlete(client, 3, payload)
+
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "invalid_field", "field": champ}
+    mock_db.cursor.assert_not_called()
+
+
+def test_update_athlete_email_deja_utilise_409(client):
+    """PUT /athletes/<id> avec l'email d'un autre client doit retourner 409 email_already_exists."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.IntegrityError(msg="Duplicate entry", errno=1062)
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.put("/athletes/3", data=json.dumps({"nom": "Paulo", "email": "messi@gymtrack.com"}),
+                         content_type="application/json")
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": "email_already_exists"}
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("payload", [{"nom": "Paulo", "email": ""}, {"nom": "Paulo", "email": None}, {"nom": "Paulo"}])
+def test_update_athlete_email_efface(client, payload):
+    """PUT /athletes/<id> avec un email vide ou absent l'efface : il est enregistré à NULL."""
+    res, _, mock_cursor = modifier_athlete(client, 3, payload)
+
+    assert res.status_code == 200
+    assert res.get_json()["email"] is None
+    assert mock_cursor.execute.call_args[0][1] == ("Paulo", None, 3)
+
+
+def test_update_athlete_erreur_db(client):
+    """PUT /athletes/<id> : une erreur MySQL doit donner une 500 db_error en JSON."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.Error(msg="Lost connection")
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.put("/athletes/3", data=json.dumps({"nom": "Paulo"}), content_type="application/json")
+
+    assert res.status_code == 500
+    assert res.get_json()["error"] == "db_error"
+    mock_db.close.assert_called_once()
+
+
+@pytest.mark.parametrize("payload", [{"nom": "x" * 101}, {"nom": "Bob", "email": "a" * 140 + "@gymtrack.com"}])
+def test_create_athlete_champ_trop_long(client, payload):
+    """POST /athletes : un nom ou un email plus long que sa colonne → 400 invalid_field, pas une 500 MySQL."""
+    res = client.post("/athletes", data=json.dumps(payload), content_type="application/json")
+
+    assert res.status_code == 400
+    assert res.get_json()["error"] == "invalid_field"

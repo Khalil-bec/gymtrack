@@ -89,6 +89,7 @@ athletes ──< seances ──< exercice_logs ──< series
 | GET | `/athletes` | Liste des athlètes (clients), avec date de dernière séance, nombre de séances sur 4 semaines, poids actuel et évolution sur 4 semaines |
 | POST | `/athletes` | Créer un athlète (nom obligatoire ; email facultatif, unique s'il est donné ; poids_kg facultatif, enregistré comme première pesée du jour) |
 | GET | `/athletes/<id>` | Profil d'un athlète : infos, résumé des séances, poids actuel et évolution (404 si inconnu) |
+| PUT | `/athletes/<id>` | Modifier le nom et l'email d'un athlète (mêmes règles qu'à la création ; email vide = effacé ; 404 si inconnu). Pas de suppression : elle effacerait l'historique |
 | GET | `/athletes/<id>/pesees` | Pesées d'un athlète, de la plus ancienne à la plus récente |
 | POST | `/athletes/<id>/pesees` | Ajouter une pesée (date_pesee, poids_kg) |
 | DELETE | `/pesees/<id>` | Supprimer une pesée |
