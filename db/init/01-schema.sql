@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS pesees (
   FOREIGN KEY (athlete_id) REFERENCES athletes(id)
 );
 
+-- Exercices : la liste partagée par toutes les séances (on peut seulement en ajouter).
+-- La collation ignore la casse et les accents : « developpe couche » est un doublon de « Développé couché ».
+CREATE TABLE IF NOT EXISTS exercices (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  nom         VARCHAR(100) COLLATE utf8mb4_0900_ai_ci NOT NULL UNIQUE,
+  type        ENUM('charge', 'poids_du_corps') NOT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS seances (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   athlete_id  INT NOT NULL,
@@ -52,6 +61,26 @@ INSERT INTO athletes (nom, email) VALUES
 
 INSERT INTO pesees (athlete_id, date_pesee, poids_kg) VALUES
   (1, '2026-03-22', 80.5);
+
+INSERT INTO exercices (nom, type) VALUES
+  ('Développé couché', 'charge'),
+  ('Développé incliné haltères', 'charge'),
+  ('Développé militaire', 'charge'),
+  ('Élévations latérales', 'charge'),
+  ('Squat', 'charge'),
+  ('Soulevé de terre', 'charge'),
+  ('Presse à cuisses', 'charge'),
+  ('Fentes haltères', 'charge'),
+  ('Hip thrust', 'charge'),
+  ('Rowing barre', 'charge'),
+  ('Tirage vertical', 'charge'),
+  ('Curl biceps', 'charge'),
+  ('Extension triceps à la poulie', 'charge'),
+  ('Tractions', 'poids_du_corps'),
+  ('Dips', 'poids_du_corps'),
+  ('Pompes', 'poids_du_corps'),
+  ('Relevés de jambes', 'poids_du_corps'),
+  ('Crunchs', 'poids_du_corps');
 
 INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES
   (1, 'Push Day — Poitrine/Épaules/Triceps', '2026-03-22', 75),

@@ -75,9 +75,10 @@ L'objectif n'est pas juste de faire tourner une app, c'est de construire une sta
 ```
 athletes ──< seances ──< exercice_logs ──< series
     └─────< pesees
+exercices   (liste partagée ; pas encore reliée aux séances)
 ```
 
-5 tables relationnelles avec clés étrangères, contrainte UNIQUE sur l'email, et données de test insérées au démarrage.
+6 tables (5 reliées par clés étrangères, `exercices` pas encore), contraintes UNIQUE sur l'email et le nom d'exercice (sans tenir compte des majuscules ni des accents), et données de test insérées au démarrage.
 
 ---
 
@@ -93,6 +94,8 @@ athletes ──< seances ──< exercice_logs ──< series
 | GET | `/athletes/<id>/pesees` | Pesées d'un athlète, de la plus ancienne à la plus récente |
 | POST | `/athletes/<id>/pesees` | Ajouter une pesée (date_pesee, poids_kg) |
 | DELETE | `/pesees/<id>` | Supprimer une pesée |
+| GET | `/exercices` | Liste partagée des exercices (nom, type `charge` ou `poids_du_corps`, nombre de séances qui l'utilisent), triée par nom |
+| POST | `/exercices` | Ajouter un exercice (nom, type ; 409 si le nom existe déjà). Pas de modification ni de suppression |
 | GET | `/seances` | Historique des séances avec nom de l'athlète |
 | POST | `/seances` | Créer une séance |
 | GET | `/seances/<id>` | Détail d'une séance — exercices + séries |

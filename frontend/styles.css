@@ -142,6 +142,32 @@ tr:last-child td { border-bottom: none; }
 .fort { font-weight: 600; }
 .a-droite { text-align: right; }
 .lien-action { font-weight: 700; text-decoration: none; white-space: nowrap; }
+.clair { color: var(--clair); }
+.tableau-exercices table { min-width: 560px; }
+
+/* Page Exercices : filtres par type et étiquette du type */
+.filtres { display: flex; flex-wrap: wrap; gap: 8px; }
+.filtre {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: transparent;
+    color: var(--attenue);
+    font: 600 14px var(--corps);
+    cursor: pointer;
+}
+.filtre:hover { color: var(--clair); }
+.filtre[aria-pressed="true"] { background: var(--accent-doux); color: var(--accent); border-color: var(--accent); }
+.etiquette {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--champ-bord);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--attenue);
+}
 
 /* Bouton qui a l'air d'un lien (action sur la page, pas un changement d'adresse) */
 .lien {
@@ -239,6 +265,10 @@ tr:last-child td { border-bottom: none; }
     font: 600 16px var(--corps);
 }
 .facultatif { font-weight: 500; }
+.groupe-choix { border: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.groupe-choix legend { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 600; color: var(--attenue); }
+.formulaire .choix { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; color: var(--clair); font-size: 15px; cursor: pointer; }
+.formulaire .choix input { min-height: 0; width: 18px; height: 18px; accent-color: var(--accent); }
 .erreur-formulaire { margin: 8px 0 0; min-height: 1.5em; color: var(--accent); font-weight: 600; }
 .actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 12px; }
 

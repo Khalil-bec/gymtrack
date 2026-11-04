@@ -13,9 +13,11 @@ ER_DUP_ENTRY = 1062
 ER_NO_REFERENCED_ROW = 1452  # clé étrangère vers une ligne qui n'existe pas
 # Vérification simple : quelque chose@domaine.extension, sans espace
 EMAIL_VALIDE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-# Longueurs maximales des colonnes athletes.nom et athletes.email (db/init/01-schema.sql)
+# Longueurs maximales des colonnes nom (athletes, exercices) et athletes.email (db/init/01-schema.sql)
 NOM_MAX = 100
 EMAIL_MAX = 150
+# Valeurs de exercices.type : avec charge ou au poids du corps
+TYPES_EXERCICE = ("charge", "poids_du_corps")
 
 
 # Les dates sortent en ISO 8601 ("2026-03-22") au lieu du format HTTP de Flask
@@ -62,22 +64,35 @@ def lire_json():
     return data if isinstance(data, dict) else {}
 
 
+# Lit le champ "nom" (client ou exercice) : du texte, espaces répétés réduits à un seul
+# (« Développé  couché » → « Développé couché », pour que la contrainte UNIQUE voie le doublon),
+# au plus NOM_MAX caractères. Renvoie (nom, erreur) : nom vaut "" s'il manque ; erreur est le corps
+# JSON d'une 400 ou None. Le cas « nom manquant » est laissé à l'appelant, qui liste ses champs manquants.
+def lire_nom(data):
+    valeur = data.get("nom")
+    if valeur is not None and not isinstance(valeur, str):
+        return "", {"error": "invalid_field", "field": "nom"}
+    nom = " ".join((valeur or "").split())
+    # Même limite que la colonne (VARCHAR) : sinon MySQL refuse et on renverrait une 500
+    if len(nom) > NOM_MAX:
+        return "", {"error": "invalid_field", "field": "nom"}
+    return nom, None
+
+
 # Lit et nettoie le nom et l'email d'un client (création et modification).
 # Renvoie (nom, email, erreur) : erreur est le corps JSON d'une 400, ou None si tout est valide.
 def lire_infos_athlete(data):
-    for champ in ("nom", "email"):
-        if data.get(champ) is not None and not isinstance(data[champ], str):
-            return None, None, {"error": "invalid_field", "field": champ}
+    if data.get("email") is not None and not isinstance(data["email"], str):
+        return None, None, {"error": "invalid_field", "field": "email"}
+    nom, erreur = lire_nom(data)
+    if erreur:
+        return None, None, erreur
 
-    nom = (data.get("nom") or "").strip()
     # L'email est facultatif : vide → NULL, pour que la contrainte UNIQUE ignore les clients sans email
     email = (data.get("email") or "").strip().lower() or None
 
     if not nom:
         return None, None, {"error": "missing_fields", "missing": ["nom"]}
-    # Mêmes limites que les colonnes (VARCHAR) : sinon MySQL refuse et on renverrait une 500
-    if len(nom) > NOM_MAX:
-        return None, None, {"error": "invalid_field", "field": "nom"}
     if email is not None and (len(email) > EMAIL_MAX or not EMAIL_VALIDE.match(email)):
         return None, None, {"error": "invalid_field", "field": "email"}
     return nom, email, None
@@ -353,6 +368,65 @@ def delete_pesee(pesee_id):
         if cursor.rowcount == 0:
             return jsonify({"error": "pesee_not_found"}), 404
         return "", 204
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# --- Exercices ---
+
+# La route /exercices renvoie la liste partagée des exercices, triée par nom.
+# nb_seances vaut 0 tant que les séances notent les exercices en texte libre ; il comptera
+# les séances qui utilisent l'exercice quand exercice_logs le référencera (ticket 06).
+@app.route("/exercices")
+def get_exercices():
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT id, nom, type, 0 AS nb_seances FROM exercices ORDER BY nom")
+        return jsonify(cursor.fetchall())
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route POST /exercices ajoute un exercice (nom + type). On ne peut ni le modifier ni le supprimer :
+# les graphiques de progression reposent sur des noms stables.
+@app.route("/exercices", methods=["POST"])
+def create_exercice():
+    data = lire_json()
+
+    nom, erreur = lire_nom(data)
+    if erreur:
+        return jsonify(erreur), 400
+    type_exercice = data.get("type")
+    # Un type qui n'est pas du texte (0, false, liste…) est invalide, pas manquant
+    if type_exercice is not None and not isinstance(type_exercice, str):
+        return jsonify({"error": "invalid_field", "field": "type"}), 400
+
+    missing = [champ for champ, valeur in (("nom", nom), ("type", type_exercice)) if not valeur]
+    if missing:
+        return jsonify({"error": "missing_fields", "missing": missing}), 400
+    if type_exercice not in TYPES_EXERCICE:
+        return jsonify({"error": "invalid_field", "field": "type"}), 400
+
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("INSERT INTO exercices (nom, type) VALUES (%s, %s)", (nom, type_exercice))
+        db.commit()
+        return jsonify({"id": cursor.lastrowid, "nom": nom, "type": type_exercice, "nb_seances": 0}), 201
+    except mysql.connector.IntegrityError as e:
+        # 1062 = nom déjà pris ; la collation de la colonne ignore la casse et les accents
+        if e.errno == ER_DUP_ENTRY:
+            return jsonify({"error": "exercice_already_exists"}), 409
+        return jsonify({"error": "db_error", "message": str(e)}), 500
     except mysql.connector.Error as e:
         return jsonify({"error": "db_error", "message": str(e)}), 500
     finally:

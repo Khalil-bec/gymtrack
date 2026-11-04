@@ -712,3 +712,136 @@ def test_create_athlete_champ_trop_long(client, payload):
 
     assert res.status_code == 400
     assert res.get_json()["error"] == "invalid_field"
+
+
+# tests GET /exercices
+def test_get_exercices(client):
+    """GET /exercices renvoie la liste (nom, type, nombre de séances qui l'utilisent), triée par nom côté SQL."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [
+        {"id": 1, "nom": "Développé couché", "type": "charge", "nb_seances": 0},
+        {"id": 14, "nom": "Tractions", "type": "poids_du_corps", "nb_seances": 0},
+    ]
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/exercices")
+
+    assert res.status_code == 200
+    assert res.get_json() == [
+        {"id": 1, "nom": "Développé couché", "type": "charge", "nb_seances": 0},
+        {"id": 14, "nom": "Tractions", "type": "poids_du_corps", "nb_seances": 0},
+    ]
+    assert "ORDER BY nom" in mock_cursor.execute.call_args[0][0]
+    mock_db.close.assert_called_once()
+
+
+# tests POST /exercices
+def poster_exercice(client, payload, mock_db=None):
+    """Envoie un POST /exercices avec un get_db mocké (nouvel id = 19 par défaut)."""
+    if mock_db is None:
+        mock_db = MagicMock()
+        mock_db.cursor.return_value.lastrowid = 19
+    with patch("main.get_db", return_value=mock_db):
+        return client.post("/exercices", data=json.dumps(payload), content_type="application/json")
+
+
+def test_create_exercice_success(client):
+    """POST /exercices ajoute un exercice (nom nettoyé) et renvoie 201 avec l'exercice créé."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.lastrowid = 19
+    mock_db.cursor.return_value = mock_cursor
+
+    res = poster_exercice(client, {"nom": "  Gainage lesté ", "type": "charge"}, mock_db)
+
+    assert res.status_code == 201
+    assert res.get_json() == {"id": 19, "nom": "Gainage lesté", "type": "charge", "nb_seances": 0}
+    assert mock_cursor.execute.call_args[0][1] == ("Gainage lesté", "charge")
+    mock_db.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("payload, missing", [
+    ({}, ["nom", "type"]),
+    ({"nom": "   ", "type": "charge"}, ["nom"]),
+    ({"nom": "Gainage"}, ["type"]),
+    ({"nom": "Gainage", "type": ""}, ["type"]),
+])
+def test_create_exercice_champs_manquants(client, payload, missing):
+    """POST /exercices sans nom ou sans type doit retourner 400 missing_fields avec les champs manquants."""
+    res = poster_exercice(client, payload)
+
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "missing_fields", "missing": missing}
+
+
+@pytest.mark.parametrize("payload, champ", [
+    ({"nom": "Gainage", "type": "cardio"}, "type"),
+    ({"nom": "Gainage", "type": ["charge"]}, "type"),
+    ({"nom": "Gainage", "type": 0}, "type"),
+    ({"nom": "Gainage", "type": False}, "type"),
+    ({"nom": 5, "type": "charge"}, "nom"),
+    ({"nom": "x" * 101, "type": "charge"}, "nom"),
+])
+def test_create_exercice_champ_invalide(client, payload, champ):
+    """POST /exercices : type inconnu, nom qui n'est pas du texte ou trop long → 400 invalid_field, sans toucher la base."""
+    mock_db = MagicMock()
+
+    res = poster_exercice(client, payload, mock_db)
+
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "invalid_field", "field": champ}
+    mock_db.cursor.assert_not_called()
+
+
+def test_create_exercice_doublon_409(client):
+    """POST /exercices avec un nom déjà pris (la collation ignore casse et accents) doit retourner 409 exercice_already_exists."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.IntegrityError(msg="Duplicate entry", errno=1062)
+
+    res = poster_exercice(client, {"nom": "developpe couche", "type": "charge"}, mock_db)
+
+    assert res.status_code == 409
+    assert res.get_json() == {"error": "exercice_already_exists"}
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("url, methode", [("/exercices", "get"), ("/exercices", "post")])
+def test_exercices_erreur_db(client, url, methode):
+    """GET et POST /exercices : une erreur MySQL doit donner une 500 db_error en JSON et fermer la connexion."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.Error(msg="Lost connection")
+
+    with patch("main.get_db", return_value=mock_db):
+        res = getattr(client, methode)(url, data=json.dumps({"nom": "Gainage", "type": "charge"}),
+                                       content_type="application/json")
+
+    assert res.status_code == 500
+    assert res.get_json()["error"] == "db_error"
+    mock_db.close.assert_called_once()
+
+
+def test_create_exercice_espaces_interieurs_reduits(client):
+    """POST /exercices : les espaces répétés dans le nom sont réduits à un seul, pour que la contrainte UNIQUE
+    voie « Développé  couché » comme un doublon de « Développé couché »."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.lastrowid = 19
+    mock_db.cursor.return_value = mock_cursor
+
+    res = poster_exercice(client, {"nom": "Développé \t  couché", "type": "charge"}, mock_db)
+
+    assert res.status_code == 201
+    assert mock_cursor.execute.call_args[0][1] == ("Développé couché", "charge")
+
+
+def test_create_exercice_autre_contrainte_500(client):
+    """POST /exercices : une violation de contrainte autre qu'un doublon est une vraie erreur (500), pas une 409."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.IntegrityError(msg="Column 'type' cannot be null", errno=1048)
+
+    res = poster_exercice(client, {"nom": "Gainage", "type": "charge"}, mock_db)
+
+    assert res.status_code == 500
+    assert res.get_json()["error"] == "db_error"

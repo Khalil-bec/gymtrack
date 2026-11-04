@@ -1,20 +1,13 @@
 // Point d'entrée : choisit la page à afficher selon l'adresse après le "#".
-import { h } from "./js/ui.js";
 import { pageClients } from "./js/pages/clients.js";
 import { pageProfil } from "./js/pages/profil.js";
+import { pageExercices } from "./js/pages/exercices.js";
 
-// "#/clients" → page Clients ; "#/clients/3" → profil du client 3 ; "#/exercices" → page Exercices (à venir).
+// "#/clients" → page Clients ; "#/clients/3" → profil du client 3 ; "#/exercices" → page Exercices.
 const routes = {
     clients: pageClients,
     exercices: pageExercices,
 };
-
-function pageExercices(conteneur) {
-    conteneur.replaceChildren(
-        h("header", { class: "entete-page" }, h("div", {}, h("h1", {}, "Exercices"))),
-        h("div", { class: "etat" }, h("p", {}, "La liste d'exercices arrive bientôt.")),
-    );
-}
 
 function afficher() {
     const [section, id] = location.hash.replace(/^#\/?/, "").split("/");
