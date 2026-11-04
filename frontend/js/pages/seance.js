@@ -1,7 +1,9 @@
-// Page d'une séance : en-tête (titre, client, date, durée), modification et suppression.
-// La saisie des exercices et des séries viendra s'ajouter sous l'en-tête.
+// Page d'une séance : en-tête (titre, client, date, durée), modification et suppression,
+// puis la saisie : exercices choisis dans la liste et séries enregistrées une par une.
 import { api } from "../api.js";
-import { h, formatDate, formatDuree, aujourdhuiIso, toast, ouvrirModale, confirmer, etat } from "../ui.js";
+import {
+    h, formatDate, formatDuree, formatCharge, aujourdhuiIso, toast, ouvrirModale, confirmer, etat, TYPES_EXERCICE,
+} from "../ui.js";
 
 export async function pageSeance(conteneur, id) {
     if (!/^\d+$/.test(id)) {
@@ -13,9 +15,10 @@ export async function pageSeance(conteneur, id) {
 
     async function charger() {
         const numero = ++dernierChargement;
-        let reponse;
+        let reponse, liste;
         try {
-            reponse = await api(`/seances/${id}`);
+            // La liste d'exercices alimente « Ajouter un exercice »
+            [reponse, liste] = await Promise.all([api(`/seances/${id}`), api("/exercices")]);
         } catch {
             if (numero !== dernierChargement || !conteneur.isConnected) return;
             conteneur.replaceChildren(fil(), etat("Impossible de contacter le serveur.",
@@ -33,10 +36,26 @@ export async function pageSeance(conteneur, id) {
                 h("button", { type: "button", class: "btn", onClick: charger }, "Réessayer")));
             return;
         }
-        afficher(reponse.data);
+        // Sans la liste d'exercices, seul « Ajouter un exercice » est indisponible : la séance reste lisible
+        afficher(reponse.data, liste.ok && Array.isArray(liste.data) ? liste.data : null);
     }
 
-    function afficher(seance) {
+    function afficher(seance, liste) {
+        const zoneExercices = h("div", { class: "exercices-seance" });
+        const vide = h("section", { class: "carte" },
+            etat("Aucun exercice noté dans cette séance pour l'instant. Ajoutez-en un avec « Ajouter un exercice »."));
+        if (seance.exercices.length === 0) zoneExercices.append(vide);
+        else zoneExercices.append(...seance.exercices.map(carteExercice));
+
+        // Un exercice ajouté arrive comme une nouvelle carte, sans recharger la page :
+        // ce qui est en cours de saisie dans les autres cartes n'est pas perdu.
+        function apresAjout(exercice) {
+            vide.remove();
+            const carte = carteExercice(exercice);
+            zoneExercices.append(carte);
+            carte.querySelector("input")?.focus();
+        }
+
         conteneur.replaceChildren(
             fil(seance),
             h("header", { class: "entete-page entete-profil" },
@@ -53,12 +72,8 @@ export async function pageSeance(conteneur, id) {
                     h("button", { type: "button", class: "btn", onClick: () => supprimer(seance) }, "Supprimer la séance"),
                 ),
             ),
-            // Le détail des exercices et séries s'affichera ici avec la saisie des séances
-            h("section", { class: "carte" }, etat(
-                seance.nb_exercices === 0 ? "Aucun exercice noté dans cette séance pour l'instant."
-                    : seance.nb_exercices === 1 ? "1 exercice noté dans cette séance."
-                        : `${seance.nb_exercices} exercices notés dans cette séance.`,
-            )),
+            zoneExercices,
+            ajoutExercice(seance, liste, apresAjout, charger),
         );
     }
 
@@ -82,6 +97,216 @@ export async function pageSeance(conteneur, id) {
 
     conteneur.replaceChildren(fil(), etat("Chargement…"));
     await charger();
+}
+
+// Carte d'un exercice noté : ses séries enregistrées, puis la saisie de la série suivante.
+// Chaque série est enregistrée dès « Ajouter la série » ; la suivante reprend le poids et le repos.
+function carteExercice(exercice) {
+    const avecCharge = exercice.type === "charge";
+    const series = [...exercice.series];
+    const derniere = () => series[series.length - 1];
+    const idTitre = `exercice-${exercice.id}`;
+
+    const compte = h("span", { class: "attenue" });
+    const lignes = h("tbody", {}, series.map((serie) => ligneSerie(serie, avecCharge)));
+    const tableau = h("div", { class: "defilement" },
+        h("table", { class: "tableau-series" },
+            h("caption", { class: "visuellement-cache" }, `Séries de ${exercice.nom}`),
+            h("thead", {}, h("tr", {},
+                h("th", { scope: "col" }, "Série"),
+                h("th", { scope: "col" }, "Poids"),
+                h("th", { scope: "col" }, "Reps"),
+                h("th", { scope: "col" }, "Repos"),
+                h("th", { scope: "col" }, h("span", { class: "visuellement-cache" }, "État")),
+            )),
+            lignes,
+        ),
+    );
+
+    // Les exercices au poids du corps n'ont jamais de champ poids
+    const poids = avecCharge ? h("input", {
+        id: `poids-${exercice.id}`, type: "number", min: "0.1", max: "999.99", step: "any", inputmode: "decimal",
+        value: derniere()?.poids_kg ?? "",
+    }) : null;
+    const reps = h("input", { id: `reps-${exercice.id}`, type: "number", min: "1", max: "999", step: "1", inputmode: "numeric", placeholder: "—" });
+    const repos = h("input", {
+        id: `repos-${exercice.id}`, type: "number", min: "0", max: "3600", step: "1", inputmode: "numeric",
+        value: derniere()?.repos_sec ?? 90,
+    });
+    const numero = h("p", { class: "numero-saisie" });
+    const erreur = h("p", { class: "erreur-formulaire", role: "alert" });
+    // Annonce la série enregistrée aux lecteurs d'écran ; à l'écran, c'est la nouvelle ligne cochée
+    const statut = h("p", { class: "visuellement-cache", role: "status" });
+    const valider = h("button", { type: "submit", class: "btn btn-primaire btn-serie" }, "Ajouter la série");
+
+    function majEtat() {
+        // 0 et 1 au singulier en français (« 0 série », comme sur la maquette)
+        compte.textContent = series.length <= 1 ? `${series.length} série` : `${series.length} séries`;
+        numero.textContent = `Série ${series.length + 1}`;
+        tableau.hidden = series.length === 0;
+    }
+
+    const champ = (input, libelle) => h("div", { class: "champ" }, h("label", { for: input.id }, libelle), input);
+    const form = h("form", { class: "saisie-serie", novalidate: true, "aria-label": `Nouvelle série de ${exercice.nom}` },
+        numero,
+        h("div", { class: "champs-serie" },
+            poids && champ(poids, "Poids (kg)"),
+            champ(reps, "Reps"),
+            champ(repos, "Repos (s)"),
+        ),
+        erreur,
+        statut,
+        valider,
+    );
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        erreur.textContent = "";
+        statut.textContent = "";
+        if (poids && (!poids.value || poids.validity.badInput)) {
+            erreur.textContent = poids.validity.badInput ? "Le poids doit être un nombre." : "Le poids est obligatoire.";
+            poids.focus();
+            return;
+        }
+        if (!reps.value) {
+            erreur.textContent = reps.validity.badInput ? "Les répétitions doivent être un nombre." : "Le nombre de répétitions est obligatoire.";
+            reps.focus();
+            return;
+        }
+        if (repos.validity.badInput) {
+            erreur.textContent = "Le repos doit être un nombre de secondes.";
+            repos.focus();
+            return;
+        }
+        valider.disabled = true;
+        try {
+            const corps = { repetitions: reps.value, repos_sec: repos.value };
+            if (poids) corps.poids_kg = poids.value;
+            const reponse = await api(`/exercice-logs/${exercice.id}/series`, { method: "POST", body: corps });
+            if (reponse.ok) {
+                series.push(reponse.data);
+                lignes.append(ligneSerie(reponse.data, avecCharge));
+                statut.textContent = `Série ${reponse.data.numero_serie} enregistrée.`;
+                // Poids et repos restent pour la série suivante ; seules les reps sont à ressaisir
+                reps.value = "";
+                majEtat();
+                reps.focus();
+            } else if (reponse.status === 400 && reponse.data?.field === "poids_kg") {
+                erreur.textContent = "Le poids doit être compris entre 0 et 1000 kg.";
+                poids?.focus();
+            } else if (reponse.status === 400 && reponse.data?.field === "repetitions") {
+                erreur.textContent = "Les répétitions doivent être un nombre entier entre 1 et 999.";
+                reps.focus();
+            } else if (reponse.status === 400 && reponse.data?.field === "repos_sec") {
+                erreur.textContent = "Le repos doit être un nombre entier de secondes, entre 0 et 3600.";
+                repos.focus();
+            } else if (reponse.status === 400) {
+                erreur.textContent = avecCharge ? "Le poids et les répétitions sont obligatoires." : "Les répétitions sont obligatoires.";
+            } else if (reponse.status === 404) {
+                erreur.textContent = "Cet exercice n'est plus dans la séance. Rechargez la page.";
+            } else {
+                erreur.textContent = "Le serveur a renvoyé une erreur. Réessayez.";
+            }
+        } catch {
+            erreur.textContent = "Impossible de contacter le serveur.";
+        } finally {
+            valider.disabled = false;
+        }
+    });
+
+    majEtat();
+    return h("section", { class: "carte carte-exercice", "aria-labelledby": idTitre },
+        h("div", { class: "tete-exercice" },
+            h("div", { class: "nom-exercice" },
+                h("h2", { id: idTitre }, exercice.nom),
+                h("span", { class: "etiquette" }, TYPES_EXERCICE[exercice.type] ?? exercice.type),
+            ),
+            compte,
+        ),
+        tableau,
+        form,
+    );
+}
+
+function ligneSerie(serie, avecCharge) {
+    return h("tr", {},
+        h("td", { class: "attenue fort" }, serie.numero_serie),
+        h("td", { class: "fort" }, avecCharge ? formatCharge(serie.poids_kg) : "Poids du corps"),
+        h("td", { class: "fort" }, serie.repetitions),
+        h("td", { class: "attenue" }, `${serie.repos_sec} s`),
+        h("td", { class: "a-droite" }, h("span", { class: "coche", role: "img", "aria-label": "Enregistrée" }, "✓")),
+    );
+}
+
+// « Ajouter un exercice » : seulement des exercices de la liste, et pas ceux déjà dans la séance.
+// liste vaut null si elle n'a pas pu être chargée.
+function ajoutExercice(seance, liste, apresAjout, recharger) {
+    const dejaLa = new Set(seance.exercices.map((e) => e.exercice_id));
+    const zone = h("section", { class: "carte", "aria-label": "Ajouter un exercice" });
+    if (liste === null) {
+        zone.append(etat("La liste d'exercices n'a pas pu être chargée.",
+            h("button", { type: "button", class: "btn", onClick: recharger }, "Réessayer")));
+        return zone;
+    }
+    const select = h("select", { id: "ajout-exercice" });
+    const erreur = h("p", { class: "erreur-formulaire", role: "alert" });
+    const valider = h("button", { type: "submit", class: "btn btn-primaire" }, "+ Ajouter l'exercice");
+
+    function remplir() {
+        const disponibles = liste.filter((e) => !dejaLa.has(e.id));
+        if (disponibles.length === 0) {
+            zone.replaceChildren(etat("Tous les exercices de la liste sont déjà dans cette séance.",
+                h("a", { href: "#/exercices", class: "btn" }, "Voir la liste d'exercices")));
+            return;
+        }
+        select.replaceChildren(
+            h("option", { value: "" }, "Choisir dans la liste…"),
+            // replaceChildren (DOM) n'aplatit pas les tableaux, contrairement à h() : on déplie la liste
+            ...disponibles.map((e) => h("option", { value: e.id }, `${e.nom} — ${TYPES_EXERCICE[e.type] ?? e.type}`)),
+        );
+    }
+
+    const form = h("form", { class: "ajout-exercice", novalidate: true },
+        h("div", { class: "champ" }, h("label", { for: "ajout-exercice" }, "Ajouter un exercice"), select),
+        valider,
+        erreur,
+    );
+    zone.append(form);
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        erreur.textContent = "";
+        const choisi = liste.find((x) => String(x.id) === select.value);
+        if (!choisi) {
+            erreur.textContent = "Choisissez un exercice dans la liste.";
+            select.focus();
+            return;
+        }
+        valider.disabled = true;
+        try {
+            const reponse = await api(`/seances/${seance.id}/exercices`, { method: "POST", body: { exercice_id: choisi.id } });
+            if (reponse.ok) {
+                dejaLa.add(choisi.id);
+                remplir();
+                apresAjout({ id: reponse.data.id, exercice_id: choisi.id, nom: choisi.nom, type: choisi.type, series: [] });
+            } else if (reponse.status === 409) {
+                erreur.textContent = "Cet exercice est déjà dans la séance.";
+            } else if (reponse.status === 400) {
+                erreur.textContent = "Cet exercice n'est plus dans la liste.";
+            } else if (reponse.status === 404) {
+                erreur.textContent = "Cette séance n'existe plus.";
+            } else {
+                erreur.textContent = "Le serveur a renvoyé une erreur. Réessayez.";
+            }
+        } catch {
+            erreur.textContent = "Impossible de contacter le serveur.";
+        } finally {
+            valider.disabled = false;
+        }
+    });
+
+    remplir();
+    return zone;
 }
 
 function afficherIntrouvable(conteneur) {

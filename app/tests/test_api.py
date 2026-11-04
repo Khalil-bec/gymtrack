@@ -990,14 +990,25 @@ def test_create_seance_athlete_inconnu_404(client):
 
 # tests GET /seances/<id>
 def test_get_seance(client):
-    """GET /seances/<id> renvoie l'en-tête de la séance : titre, date (ISO), durée, le client (id + nom)
-    et le nombre d'exercices notés."""
+    """GET /seances/<id> renvoie l'en-tête (titre, date ISO, durée, client) et les exercices dans l'ordre d'ajout,
+    chacun avec son type et ses séries dans l'ordre ; un exercice sans série a une liste vide."""
     mock_db = MagicMock()
     mock_cursor = MagicMock()
     mock_cursor.fetchone.return_value = {
         "id": 42, "titre": "Push", "date_seance": datetime.date(2026, 10, 28), "duree_min": None,
-        "athlete_id": 3, "athlete_nom": "Paulo Dybala", "nb_exercices": 2,
+        "athlete_id": 3, "athlete_nom": "Paulo Dybala",
     }
+    # Une ligne par série (LEFT JOIN) ; serie_id vide = exercice encore sans série
+    mock_cursor.fetchall.return_value = [
+        {"log_id": 7, "exercice_id": 1, "nom": "Développé couché", "type": "charge", "ordre": 1,
+         "serie_id": 20, "numero_serie": 1, "poids_kg": Decimal("80.00"), "repetitions": 8, "repos_sec": 120},
+        {"log_id": 7, "exercice_id": 1, "nom": "Développé couché", "type": "charge", "ordre": 1,
+         "serie_id": 21, "numero_serie": 2, "poids_kg": Decimal("77.50"), "repetitions": 8, "repos_sec": 120},
+        {"log_id": 8, "exercice_id": 15, "nom": "Dips", "type": "poids_du_corps", "ordre": 2,
+         "serie_id": 22, "numero_serie": 1, "poids_kg": None, "repetitions": 12, "repos_sec": 90},
+        {"log_id": 9, "exercice_id": 5, "nom": "Squat", "type": "charge", "ordre": 3,
+         "serie_id": None, "numero_serie": None, "poids_kg": None, "repetitions": None, "repos_sec": None},
+    ]
     mock_db.cursor.return_value = mock_cursor
 
     with patch("main.get_db", return_value=mock_db):
@@ -1006,10 +1017,21 @@ def test_get_seance(client):
     assert res.status_code == 200
     assert res.get_json() == {
         "id": 42, "titre": "Push", "date_seance": "2026-10-28", "duree_min": None,
-        "athlete_id": 3, "athlete_nom": "Paulo Dybala", "nb_exercices": 2,
+        "athlete_id": 3, "athlete_nom": "Paulo Dybala",
+        "exercices": [
+            {"id": 7, "exercice_id": 1, "nom": "Développé couché", "type": "charge", "series": [
+                {"id": 20, "numero_serie": 1, "poids_kg": 80.0, "repetitions": 8, "repos_sec": 120},
+                {"id": 21, "numero_serie": 2, "poids_kg": 77.5, "repetitions": 8, "repos_sec": 120},
+            ]},
+            {"id": 8, "exercice_id": 15, "nom": "Dips", "type": "poids_du_corps", "series": [
+                {"id": 22, "numero_serie": 1, "poids_kg": None, "repetitions": 12, "repos_sec": 90},
+            ]},
+            {"id": 9, "exercice_id": 5, "nom": "Squat", "type": "charge", "series": []},
+        ],
     }
     requete, params = mock_cursor.execute.call_args[0]
-    assert "nb_exercices" in requete and params == (42,)
+    # l.id départage deux exercices de même ordre : l'ordre affiché reste stable d'un chargement à l'autre
+    assert "ORDER BY l.ordre, l.id, s.numero_serie" in requete and params == (42,)
 
 
 def test_get_seance_inconnue_404(client):
@@ -1108,6 +1130,198 @@ def test_seances_erreur_db(client, methode, url):
     with patch("main.get_db", return_value=mock_db):
         res = getattr(client, methode)(url, data=json.dumps({"titre": "Push", "date_seance": "2026-10-28"}),
                                        content_type="application/json")
+
+    assert res.status_code == 500
+    assert res.get_json()["error"] == "db_error"
+    mock_db.close.assert_called_once()
+
+
+# tests ticket 06 : saisie des séances
+def test_get_exercices_compte_les_seances_reelles(client):
+    """GET /exercices compte les séances qui utilisent chaque exercice (via exercice_logs) ; LEFT JOIN pour
+    qu'un exercice jamais utilisé reste dans la liste avec 0."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [{"id": 1, "nom": "Développé couché", "type": "charge", "nb_seances": 3}]
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/exercices")
+
+    assert res.get_json()[0]["nb_seances"] == 3
+    requete = mock_cursor.execute.call_args[0][0]
+    assert "LEFT JOIN exercice_logs" in requete and "COUNT(DISTINCT" in requete
+
+
+# tests POST /seances/<id>/exercices
+def ajouter_exercice(client, seance_id, payload, mock_db=None):
+    """Envoie un POST /seances/<id>/exercices avec un get_db mocké ; par défaut la séance existe (nouvel id = 9)."""
+    if mock_db is None:
+        mock_db = MagicMock()
+        mock_db.cursor.return_value.fetchone.return_value = {"id": seance_id}
+        mock_db.cursor.return_value.lastrowid = 9
+    with patch("main.get_db", return_value=mock_db):
+        return client.post(f"/seances/{seance_id}/exercices", data=json.dumps(payload), content_type="application/json")
+
+
+def test_ajouter_exercice_a_la_seance(client):
+    """POST /seances/<id>/exercices ajoute un exercice de la liste à la fin de la séance et renvoie 201 avec son id."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = {"id": 42}
+    mock_cursor.lastrowid = 9
+    mock_db.cursor.return_value = mock_cursor
+
+    res = ajouter_exercice(client, 42, {"exercice_id": 5}, mock_db)
+
+    assert res.status_code == 201
+    assert res.get_json() == {"id": 9}
+    verification = mock_cursor.execute.call_args_list[0][0][0]
+    requete, params = mock_cursor.execute.call_args[0]
+    # La séance est verrouillée le temps de l'ajout : deux ajouts simultanés ne prennent pas le même ordre
+    assert "FOR UPDATE" in verification
+    # Ordre = dernier ordre de la séance + 1 (1 pour le premier exercice)
+    assert "MAX(ordre)" in requete and params == (42, 5, 42)
+    mock_db.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("payload, attendu", [
+    ({}, {"error": "missing_fields", "missing": ["exercice_id"]}),
+    ({"exercice_id": "Squat"}, {"error": "invalid_field", "field": "exercice_id"}),
+    ({"exercice_id": True}, {"error": "invalid_field", "field": "exercice_id"}),
+    ({"exercice_id": 0}, {"error": "invalid_field", "field": "exercice_id"}),
+])
+def test_ajouter_exercice_validation(client, payload, attendu):
+    """POST /seances/<id>/exercices : exercice_id manquant ou qui n'est pas un id → 400, sans toucher la base."""
+    mock_db = MagicMock()
+
+    res = ajouter_exercice(client, 42, payload, mock_db)
+
+    assert res.status_code == 400
+    assert res.get_json() == attendu
+    mock_db.cursor.assert_not_called()
+
+
+def test_ajouter_exercice_seance_inconnue_404(client):
+    """POST /seances/<id>/exercices pour une séance qui n'existe pas doit retourner 404 seance_not_found."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.fetchone.return_value = None
+
+    res = ajouter_exercice(client, 999, {"exercice_id": 5}, mock_db)
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "seance_not_found"}
+
+
+@pytest.mark.parametrize("errno, statut, attendu", [
+    (1452, 400, {"error": "invalid_field", "field": "exercice_id"}),   # exercice absent de la liste
+    (1062, 409, {"error": "exercice_deja_dans_seance"}),               # déjà dans cette séance
+])
+def test_ajouter_exercice_contraintes(client, errno, statut, attendu):
+    """La séance existe, mais l'exercice n'est pas dans la liste (clé étrangère) ou y est déjà (UNIQUE)."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = {"id": 42}
+    mock_cursor.execute.side_effect = [None, mysql.connector.IntegrityError(msg="contrainte", errno=errno)]
+    mock_db.cursor.return_value = mock_cursor
+
+    res = ajouter_exercice(client, 42, {"exercice_id": 5}, mock_db)
+
+    assert res.status_code == statut
+    assert res.get_json() == attendu
+    mock_db.commit.assert_not_called()
+
+
+# tests POST /exercice-logs/<id>/series
+def ajouter_serie(client, log_id, payload, type_exercice="charge", numero=1):
+    """Envoie un POST /exercice-logs/<id>/series ; la base mockée dit le type de l'exercice (None = exercice noté inconnu)
+    puis le prochain numéro de série."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.side_effect = [
+        None if type_exercice is None else {"type": type_exercice},
+        {"suivant": numero},
+    ]
+    mock_cursor.lastrowid = 30
+    mock_db.cursor.return_value = mock_cursor
+    with patch("main.get_db", return_value=mock_db):
+        res = client.post(f"/exercice-logs/{log_id}/series", data=json.dumps(payload), content_type="application/json")
+    return res, mock_db, mock_cursor
+
+
+def test_ajouter_serie_avec_charge(client):
+    """Une série d'un exercice avec charge est enregistrée tout de suite, numérotée à la suite, et renvoyée en 201."""
+    res, mock_db, mock_cursor = ajouter_serie(client, 7, {"poids_kg": "77.5", "repetitions": "8", "repos_sec": "120"}, numero=3)
+
+    assert res.status_code == 201
+    assert res.get_json() == {"id": 30, "numero_serie": 3, "poids_kg": 77.5, "repetitions": 8, "repos_sec": 120}
+    requetes = [c[0][0] for c in mock_cursor.execute.call_args_list]
+    # L'exercice noté est verrouillé le temps de l'ajout : deux séries simultanées ne prennent pas le même numéro
+    assert "FOR UPDATE" in requetes[0]
+    # Numéro = dernier numéro de cet exercice noté + 1
+    assert "MAX(numero_serie)" in requetes[1]
+    insertion = [c for c in mock_cursor.execute.call_args_list if "INSERT INTO series" in c[0][0]][0]
+    assert insertion[0][1] == (7, 3, 77.5, 8, 120)
+    mock_db.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("poids", [None, ""])
+def test_ajouter_serie_poids_du_corps(client, poids):
+    """Au poids du corps, la série n'a pas de poids (NULL) ; le repos vaut 90 s s'il n'est pas donné."""
+    payload = {"repetitions": 12}
+    if poids is not None:
+        payload["poids_kg"] = poids
+    res, _, mock_cursor = ajouter_serie(client, 8, payload, type_exercice="poids_du_corps")
+
+    assert res.status_code == 201
+    assert res.get_json() == {"id": 30, "numero_serie": 1, "poids_kg": None, "repetitions": 12, "repos_sec": 90}
+    insertion = [c for c in mock_cursor.execute.call_args_list if "INSERT INTO series" in c[0][0]][0]
+    assert insertion[0][1] == (8, 1, None, 12, 90)
+
+
+@pytest.mark.parametrize("type_exercice, payload, attendu", [
+    ("charge", {"poids_kg": 80}, {"error": "missing_fields", "missing": ["repetitions"]}),
+    ("charge", {"repetitions": 8}, {"error": "missing_fields", "missing": ["poids_kg"]}),
+    ("charge", {"poids_kg": 0, "repetitions": 8}, {"error": "invalid_field", "field": "poids_kg"}),
+    ("charge", {"poids_kg": 1000, "repetitions": 8}, {"error": "invalid_field", "field": "poids_kg"}),
+    ("poids_du_corps", {"poids_kg": 10, "repetitions": 8}, {"error": "invalid_field", "field": "poids_kg"}),
+    ("charge", {"poids_kg": 80, "repetitions": 0}, {"error": "invalid_field", "field": "repetitions"}),
+    ("charge", {"poids_kg": 80, "repetitions": 8.5}, {"error": "invalid_field", "field": "repetitions"}),
+    ("charge", {"poids_kg": 80, "repetitions": 1000}, {"error": "invalid_field", "field": "repetitions"}),
+    ("charge", {"poids_kg": 80, "repetitions": 8, "repos_sec": -1}, {"error": "invalid_field", "field": "repos_sec"}),
+    ("charge", {"poids_kg": 80, "repetitions": 8, "repos_sec": 3601}, {"error": "invalid_field", "field": "repos_sec"}),
+    # Plus de 4300 chiffres : int() lève ValueError en Python 3.11+ ; doit rester une 400 JSON
+    ("charge", {"poids_kg": 80, "repetitions": "9" * 5000}, {"error": "invalid_field", "field": "repetitions"}),
+])
+def test_ajouter_serie_validation(client, type_exercice, payload, attendu):
+    """Reps obligatoires (1–999), repos 0–3600 s ; poids obligatoire avec charge (0–1000 kg exclus), interdit au poids du corps."""
+    res, mock_db, _ = ajouter_serie(client, 7, payload, type_exercice=type_exercice)
+
+    assert res.status_code == 400
+    assert res.get_json() == attendu
+    mock_db.commit.assert_not_called()
+
+
+def test_ajouter_serie_exercice_note_inconnu_404(client):
+    """POST /exercice-logs/<id>/series pour un exercice noté qui n'existe pas doit retourner 404."""
+    res, mock_db, _ = ajouter_serie(client, 999, {"poids_kg": 80, "repetitions": 8}, type_exercice=None)
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "exercice_log_not_found"}
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("methode, url, payload", [
+    ("post", "/seances/42/exercices", {"exercice_id": 5}),
+    ("post", "/exercice-logs/7/series", {"poids_kg": 80, "repetitions": 8}),
+])
+def test_saisie_erreur_db(client, methode, url, payload):
+    """Routes de saisie : une erreur MySQL doit donner une 500 db_error en JSON et fermer la connexion."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.Error(msg="Lost connection")
+
+    with patch("main.get_db", return_value=mock_db):
+        res = getattr(client, methode)(url, data=json.dumps(payload), content_type="application/json")
 
     assert res.status_code == 500
     assert res.get_json()["error"] == "db_error"

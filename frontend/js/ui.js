@@ -65,6 +65,15 @@ export function formatEvolution(kg) {
     return `${signe}${nombre.format(Math.abs(kg))} kg`;
 }
 
+// Charge d'une série : 80 → "80 kg", 77.5 → "77,5 kg" (pas de décimale forcée, comme sur les maquettes).
+const charge = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 });
+export function formatCharge(kg) {
+    return kg === null || kg === undefined ? "—" : `${charge.format(kg)} kg`;
+}
+
+// Libellés des types d'exercice (valeurs de exercices.type)
+export const TYPES_EXERCICE = { charge: "Avec charge", poids_du_corps: "Poids du corps" };
+
 // 75 → "75 min" ; vide → "—".
 export function formatDuree(minutes) {
     return minutes === null || minutes === undefined ? "—" : `${minutes} min`;

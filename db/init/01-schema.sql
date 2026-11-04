@@ -37,23 +37,28 @@ CREATE TABLE IF NOT EXISTS seances (
   FOREIGN KEY (athlete_id) REFERENCES athletes(id)
 );
 
+-- Exercices notés dans une séance : un exercice de la liste, au plus une fois par séance, dans l'ordre d'ajout
 CREATE TABLE IF NOT EXISTS exercice_logs (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  seance_id  INT NOT NULL,
-  nom        VARCHAR(100) NOT NULL,
-  ordre      INT DEFAULT 1,
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  seance_id    INT NOT NULL,
+  exercice_id  INT NOT NULL,
+  ordre        INT NOT NULL,
+  UNIQUE (seance_id, exercice_id),
   -- Supprimer une séance supprime ses exercices notés (et, en cascade, leurs séries)
-  FOREIGN KEY (seance_id) REFERENCES seances(id) ON DELETE CASCADE
+  FOREIGN KEY (seance_id) REFERENCES seances(id) ON DELETE CASCADE,
+  FOREIGN KEY (exercice_id) REFERENCES exercices(id)
 );
 
+-- Séries d'un exercice noté, numérotées 1, 2, 3… ; poids_kg vide pour un exercice au poids du corps
 CREATE TABLE IF NOT EXISTS series (
-  id             INT AUTO_INCREMENT PRIMARY KEY,
-  exercice_id    INT NOT NULL,
-  numero_serie   INT NOT NULL,
-  poids_kg       DECIMAL(5,2),
-  repetitions    INT NOT NULL,
-  repos_sec      INT DEFAULT 90,
-  FOREIGN KEY (exercice_id) REFERENCES exercice_logs(id) ON DELETE CASCADE
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  exercice_log_id  INT NOT NULL,
+  numero_serie     INT NOT NULL,
+  poids_kg         DECIMAL(5,2),
+  repetitions      INT NOT NULL,
+  repos_sec        INT NOT NULL DEFAULT 90,
+  UNIQUE (exercice_log_id, numero_serie),
+  FOREIGN KEY (exercice_log_id) REFERENCES exercice_logs(id) ON DELETE CASCADE
 );
 
 -- Données de test
@@ -87,14 +92,16 @@ INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES
   (1, 'Push Day — Poitrine/Épaules/Triceps', '2026-03-22', 75),
   (1, 'Pull Day — Dos/Biceps', '2026-03-20', 65);
 
-INSERT INTO exercice_logs (seance_id, nom, ordre) VALUES
-  (1, 'Développé couché', 1),
-  (1, 'Développé militaire', 2),
-  (2, 'Tractions', 1),
-  (2, 'Rowing barre', 2);
+-- exercice_id : 1 Développé couché, 3 Développé militaire, 14 Tractions, 10 Rowing barre
+INSERT INTO exercice_logs (seance_id, exercice_id, ordre) VALUES
+  (1, 1, 1),
+  (1, 3, 2),
+  (2, 14, 1),
+  (2, 10, 2);
 
-INSERT INTO series (exercice_id, numero_serie, poids_kg, repetitions) VALUES
+-- Tractions (exercice noté 3) : au poids du corps, donc sans poids
+INSERT INTO series (exercice_log_id, numero_serie, poids_kg, repetitions) VALUES
   (1, 1, 80, 8), (1, 2, 80, 7), (1, 3, 75, 8),
   (2, 1, 50, 10), (2, 2, 50, 9),
-  (3, 1, 0, 8), (3, 2, 0, 7),
+  (3, 1, NULL, 8), (3, 2, NULL, 7),
   (4, 1, 60, 10), (4, 2, 60, 9);

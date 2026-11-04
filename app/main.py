@@ -18,6 +18,10 @@ NOM_MAX = 100
 EMAIL_MAX = 150
 TITRE_MAX = 200   # seances.titre
 DUREE_MAX = 600   # durée d'une séance en minutes (10 h)
+ID_MAX = 2**31 - 1  # plus grand INT MySQL
+REPS_MAX = 999      # répétitions d'une série
+REPOS_MAX = 3600    # repos après une série, en secondes (1 h)
+REPOS_DEFAUT = 90
 # Valeurs de exercices.type : avec charge ou au poids du corps
 TYPES_EXERCICE = ("charge", "poids_du_corps")
 
@@ -60,6 +64,18 @@ def lire_date(valeur):
         return None
 
 
+# Lit un nombre entier entre minimum et maximum : un int, ou du texte de chiffres venant d'un formulaire ("75").
+# Renvoie None sinon (75.5, "une heure", True — bool est un int en Python, mais True n'est pas 1 minute).
+def lire_entier(valeur, minimum, maximum):
+    # isdecimal et pas isdigit : « ² » est un « chiffre » pour isdigit mais int() le refuse
+    # 10 chiffres au plus : assez pour un INT MySQL, et int() refuse au-delà de 4300 chiffres (ValueError)
+    if isinstance(valeur, str) and valeur.strip().isdecimal() and len(valeur.strip()) <= 10:
+        valeur = int(valeur)
+    if isinstance(valeur, bool) or not isinstance(valeur, int) or not minimum <= valeur <= maximum:
+        return None
+    return valeur
+
+
 # Comme lire_date, mais refuse aussi une date à venir (pesée, séance : on note ce qui a eu lieu).
 # Un jour de marge, car l'horloge du serveur (UTC) peut être en retard d'un jour sur celle
 # du coach (ex. 0 h 30 à Paris = 23 h 30 la veille en UTC).
@@ -92,13 +108,42 @@ def lire_infos_seance(data):
     if duree_min in (None, ""):
         duree_min = None
     else:
-        # isdecimal et pas isdigit : « ² » est un « chiffre » pour isdigit mais int() le refuse
-        if isinstance(duree_min, str) and duree_min.strip().isdecimal():
-            duree_min = int(duree_min)
-        # bool est un int en Python : True ne doit pas passer pour 1 minute
-        if isinstance(duree_min, bool) or not isinstance(duree_min, int) or not 1 <= duree_min <= DUREE_MAX:
+        duree_min = lire_entier(duree_min, 1, DUREE_MAX)
+        if duree_min is None:
             return None, None, None, {"error": "invalid_field", "field": "duree_min"}
     return titre, date_seance, duree_min, None
+
+
+# Lit et valide une série selon le type de l'exercice : poids obligatoire avec charge, interdit au poids
+# du corps ; reps obligatoires (1 à REPS_MAX) ; repos facultatif en secondes (90 par défaut, 0 à REPOS_MAX).
+# Renvoie (poids_kg, repetitions, repos_sec, erreur) : erreur est le corps JSON d'une 400, ou None.
+def lire_infos_serie(data, type_exercice):
+    poids_donne = data.get("poids_kg") not in (None, "")
+    missing = []
+    if type_exercice == "charge" and not poids_donne:
+        missing.append("poids_kg")
+    if data.get("repetitions") in (None, ""):
+        missing.append("repetitions")
+    if missing:
+        return None, None, None, {"error": "missing_fields", "missing": missing}
+
+    poids_kg = None
+    if poids_donne:
+        # Un poids sur un exercice au poids du corps est une erreur de saisie, pas une valeur à ignorer
+        poids_kg = lire_poids(data["poids_kg"]) if type_exercice == "charge" else None
+        if poids_kg is None:
+            return None, None, None, {"error": "invalid_field", "field": "poids_kg"}
+
+    repetitions = lire_entier(data["repetitions"], 1, REPS_MAX)
+    if repetitions is None:
+        return None, None, None, {"error": "invalid_field", "field": "repetitions"}
+
+    repos_sec = REPOS_DEFAUT
+    if data.get("repos_sec") not in (None, ""):
+        repos_sec = lire_entier(data["repos_sec"], 0, REPOS_MAX)
+        if repos_sec is None:
+            return None, None, None, {"error": "invalid_field", "field": "repos_sec"}
+    return poids_kg, repetitions, repos_sec, None
 
 
 # Corps JSON de la requête ; {} s'il est absent, invalide ou n'est pas un objet (liste, texte…).
@@ -418,16 +463,21 @@ def delete_pesee(pesee_id):
 
 # --- Exercices ---
 
-# La route /exercices renvoie la liste partagée des exercices, triée par nom.
-# nb_seances vaut 0 tant que les séances notent les exercices en texte libre ; il comptera
-# les séances qui utilisent l'exercice quand exercice_logs le référencera (ticket 06).
+# La route /exercices renvoie la liste partagée des exercices, triée par nom,
+# avec le nombre de séances qui utilisent chacun.
 @app.route("/exercices")
 def get_exercices():
     db = None
     try:
         db = get_db()
         cursor = db.cursor(dictionary=True)
-        cursor.execute("SELECT id, nom, type, 0 AS nb_seances FROM exercices ORDER BY nom")
+        cursor.execute("""
+            SELECT x.id, x.nom, x.type, COUNT(DISTINCT l.seance_id) AS nb_seances
+            FROM exercices x
+            LEFT JOIN exercice_logs l ON l.exercice_id = x.id
+            GROUP BY x.id
+            ORDER BY nom
+        """)
         return jsonify(cursor.fetchall())
     except mysql.connector.Error as e:
         return jsonify({"error": "db_error", "message": str(e)}), 500
@@ -549,9 +599,8 @@ def get_seances():
     db.close()
     return jsonify(seances)
 
-# La route /seances/<id> renvoie l'en-tête d'une séance (titre, date, durée), son client
-# et le nombre d'exercices notés.
-# Les exercices et séries s'y ajouteront avec la saisie des séances.
+# La route /seances/<id> renvoie une séance : en-tête (titre, date, durée, client) et exercices notés
+# dans l'ordre d'ajout, chacun avec son type et ses séries dans l'ordre.
 @app.route("/seances/<int:seance_id>")
 def get_seance(seance_id):
     db = None
@@ -559,8 +608,7 @@ def get_seance(seance_id):
         db = get_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("""
-            SELECT s.id, s.titre, s.date_seance, s.duree_min, s.athlete_id, a.nom AS athlete_nom,
-                   (SELECT COUNT(*) FROM exercice_logs e WHERE e.seance_id = s.id) AS nb_exercices
+            SELECT s.id, s.titre, s.date_seance, s.duree_min, s.athlete_id, a.nom AS athlete_nom
             FROM seances s
             JOIN athletes a ON a.id = s.athlete_id
             WHERE s.id = %s
@@ -568,7 +616,116 @@ def get_seance(seance_id):
         seance = cursor.fetchone()
         if seance is None:
             return jsonify({"error": "seance_not_found"}), 404
+
+        # Une ligne par série ; un exercice encore sans série donne une ligne avec serie_id vide
+        cursor.execute("""
+            SELECT l.id AS log_id, l.exercice_id, x.nom, x.type, l.ordre,
+                   s.id AS serie_id, s.numero_serie, s.poids_kg, s.repetitions, s.repos_sec
+            FROM exercice_logs l
+            JOIN exercices x ON x.id = l.exercice_id
+            LEFT JOIN series s ON s.exercice_log_id = l.id
+            WHERE l.seance_id = %s
+            ORDER BY l.ordre, l.id, s.numero_serie
+        """, (seance_id,))
+        exercices = {}
+        for ligne in cursor.fetchall():
+            exercice = exercices.setdefault(ligne["log_id"], {
+                "id": ligne["log_id"], "exercice_id": ligne["exercice_id"],
+                "nom": ligne["nom"], "type": ligne["type"], "series": [],
+            })
+            if ligne["serie_id"] is not None:
+                exercice["series"].append({
+                    "id": ligne["serie_id"], "numero_serie": ligne["numero_serie"],
+                    # DECIMAL → nombre (comme pour les pesées) ; vide au poids du corps
+                    "poids_kg": None if ligne["poids_kg"] is None else float(ligne["poids_kg"]),
+                    "repetitions": ligne["repetitions"], "repos_sec": ligne["repos_sec"],
+                })
+        # Les dict gardent l'ordre d'insertion, donc l'ordre de la requête
+        seance["exercices"] = list(exercices.values())
         return jsonify(seance)
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route POST /seances/<id>/exercices ajoute un exercice de la liste à la fin de la séance.
+# Un exercice n'apparaît qu'une fois par séance : ses séries se notent toutes sous la même entrée.
+@app.route("/seances/<int:seance_id>/exercices", methods=["POST"])
+def ajouter_exercice_seance(seance_id):
+    data = lire_json()
+    if data.get("exercice_id") in (None, ""):
+        return jsonify({"error": "missing_fields", "missing": ["exercice_id"]}), 400
+    exercice_id = lire_entier(data["exercice_id"], 1, ID_MAX)
+    if exercice_id is None:
+        return jsonify({"error": "invalid_field", "field": "exercice_id"}), 400
+
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        # Séance vérifiée à part : sinon une clé étrangère refusée ne dirait pas si c'est la séance ou l'exercice.
+        # FOR UPDATE la verrouille jusqu'au commit : deux ajouts simultanés ne calculent pas le même ordre.
+        cursor.execute("SELECT id FROM seances WHERE id = %s FOR UPDATE", (seance_id,))
+        if cursor.fetchone() is None:
+            return jsonify({"error": "seance_not_found"}), 404
+        cursor.execute("""
+            INSERT INTO exercice_logs (seance_id, exercice_id, ordre)
+            SELECT %s, %s, COALESCE(MAX(ordre), 0) + 1 FROM exercice_logs WHERE seance_id = %s
+        """, (seance_id, exercice_id, seance_id))
+        db.commit()
+        return jsonify({"id": cursor.lastrowid}), 201
+    except mysql.connector.IntegrityError as e:
+        if e.errno == ER_NO_REFERENCED_ROW:
+            return jsonify({"error": "invalid_field", "field": "exercice_id"}), 400
+        if e.errno == ER_DUP_ENTRY:
+            return jsonify({"error": "exercice_deja_dans_seance"}), 409
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route POST /exercice-logs/<id>/series enregistre une série dès qu'elle est saisie,
+# numérotée à la suite des séries déjà notées pour cet exercice dans la séance.
+@app.route("/exercice-logs/<int:log_id>/series", methods=["POST"])
+def ajouter_serie(log_id):
+    data = lire_json()
+
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        # Le type de l'exercice décide si le poids est obligatoire ou interdit. FOR UPDATE verrouille l'exercice
+        # noté jusqu'au commit : deux séries envoyées en même temps ne calculent pas le même numéro.
+        cursor.execute("""
+            SELECT x.type FROM exercice_logs l JOIN exercices x ON x.id = l.exercice_id WHERE l.id = %s FOR UPDATE
+        """, (log_id,))
+        exercice = cursor.fetchone()
+        if exercice is None:
+            return jsonify({"error": "exercice_log_not_found"}), 404
+
+        poids_kg, repetitions, repos_sec, erreur = lire_infos_serie(data, exercice["type"])
+        if erreur:
+            return jsonify(erreur), 400
+
+        cursor.execute(
+            "SELECT COALESCE(MAX(numero_serie), 0) + 1 AS suivant FROM series WHERE exercice_log_id = %s", (log_id,)
+        )
+        numero_serie = cursor.fetchone()["suivant"]
+        cursor.execute(
+            "INSERT INTO series (exercice_log_id, numero_serie, poids_kg, repetitions, repos_sec) VALUES (%s, %s, %s, %s, %s)",
+            (log_id, numero_serie, poids_kg, repetitions, repos_sec)
+        )
+        serie_id = cursor.lastrowid
+        db.commit()
+        return jsonify({
+            "id": serie_id, "numero_serie": numero_serie,
+            "poids_kg": poids_kg, "repetitions": repetitions, "repos_sec": repos_sec,
+        }), 201
     except mysql.connector.Error as e:
         return jsonify({"error": "db_error", "message": str(e)}), 500
     finally:

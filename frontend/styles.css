@@ -86,6 +86,8 @@ h2 { font-size: 22px; }
 .page:focus { outline: none; }
 
 @media (max-width: 640px) {
+    /* Liens du fil d'Ariane assez hauts pour le doigt (44 px), comme la flèche retour de la maquette téléphone */
+    .fil a { display: inline-flex; align-items: center; min-height: 44px; }
     .menu { border-right: none; border-bottom: 1px solid var(--menu-bord); padding: 16px; gap: 12px; }
     .menu-liens { flex-direction: row; }
     .contenu { padding: 20px 16px; }
@@ -147,6 +149,45 @@ tr:last-child td { border-bottom: none; }
 .carte-tableau .tableau-seances { min-width: 560px; }
 .carte-tete.carte-tete-tableau { padding: 12px 16px 8px; margin-bottom: 0; }
 .infos-seance { display: flex; flex-wrap: wrap; gap: 16px; }
+
+/* Page Séance : un exercice par carte, ses séries, puis la saisie de la suivante */
+.exercices-seance { display: flex; flex-direction: column; gap: 16px; }
+.carte-exercice { display: flex; flex-direction: column; gap: 12px; }
+.tete-exercice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.nom-exercice { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-width: 0; }
+.tableau-series { min-width: 0; }
+.tableau-series th, .tableau-series td { padding: 10px 8px; }
+.tableau-series th:first-child, .tableau-series td:first-child { padding-left: 0; }
+.tableau-series th:last-child, .tableau-series td:last-child { padding-right: 0; }
+.coche { color: #4ade80; font-weight: 700; }
+.saisie-serie, .ajout-exercice { display: flex; flex-direction: column; gap: 10px; }
+.saisie-serie { border-top: 1px solid var(--bord); padding-top: 12px; }
+.numero-saisie { margin: 0; font-weight: 700; color: var(--accent); }
+.champs-serie { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; }
+.champ { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.champ label { font-size: 13px; font-weight: 600; color: var(--attenue); }
+.champ input, .champ select {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 12px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: var(--fond);
+    color: var(--clair);
+    font: 600 18px var(--corps);
+}
+.champ select { font-size: 16px; }
+.saisie-serie .erreur-formulaire, .ajout-exercice .erreur-formulaire { margin: 0; min-height: 0; }
+.btn-serie { min-height: 52px; font-size: 17px; }
+/* Sur un écran large, le bouton reprend sa taille normale ; sur téléphone il prend toute la largeur */
+@media (min-width: 641px) {
+    .btn-serie { align-self: flex-start; min-height: 44px; font-size: 15px; padding: 0 24px; }
+    .champs-serie { grid-template-columns: repeat(auto-fit, minmax(120px, 160px)); }
+    .ajout-exercice { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+    .ajout-exercice .champ { flex: 1 1 260px; }
+    .ajout-exercice .champ select { min-height: 44px; }
+    .ajout-exercice .erreur-formulaire { flex-basis: 100%; }
+}
 
 /* Page Exercices : filtres par type et étiquette du type */
 .filtres { display: flex; flex-wrap: wrap; gap: 8px; }

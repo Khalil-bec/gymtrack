@@ -1,8 +1,7 @@
 // Page Exercices : la liste partagée par toutes les séances, filtrable par type. On peut seulement ajouter.
 import { api } from "../api.js";
-import { h, toast, ouvrirModale, etat } from "../ui.js";
+import { h, toast, ouvrirModale, etat, TYPES_EXERCICE as TYPES } from "../ui.js";
 
-const TYPES = { charge: "Avec charge", poids_du_corps: "Poids du corps" };
 const FILTRES = [["tous", "Tous"], ["charge", "Avec charge"], ["poids_du_corps", "Poids du corps"]];
 
 export async function pageExercices(conteneur) {
