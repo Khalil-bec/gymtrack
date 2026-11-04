@@ -108,7 +108,11 @@ function carteExercice(exercice) {
     const idTitre = `exercice-${exercice.id}`;
 
     const compte = h("span", { class: "attenue" });
-    const lignes = h("tbody", {}, series.map((serie) => ligneSerie(serie, avecCharge)));
+    const lignes = h("tbody", {});
+    // Redessine les lignes après un ajout, une correction ou une suppression (numéros à jour)
+    function dessinerLignes() {
+        lignes.replaceChildren(...series.map((serie) => ligneSerie(serie, exercice, () => corriger(serie))));
+    }
     const tableau = h("div", { class: "defilement" },
         h("table", { class: "tableau-series" },
             h("caption", { class: "visuellement-cache" }, `Séries de ${exercice.nom}`),
@@ -116,8 +120,8 @@ function carteExercice(exercice) {
                 h("th", { scope: "col" }, "Série"),
                 h("th", { scope: "col" }, "Poids"),
                 h("th", { scope: "col" }, "Reps"),
-                h("th", { scope: "col" }, "Repos"),
-                h("th", { scope: "col" }, h("span", { class: "visuellement-cache" }, "État")),
+                h("th", { scope: "col", class: "col-repos" }, "Repos"),
+                h("th", { scope: "col" }, h("span", { class: "visuellement-cache" }, "État et actions")),
             )),
             lignes,
         ),
@@ -163,49 +167,21 @@ function carteExercice(exercice) {
         e.preventDefault();
         erreur.textContent = "";
         statut.textContent = "";
-        if (poids && (!poids.value || poids.validity.badInput)) {
-            erreur.textContent = poids.validity.badInput ? "Le poids doit être un nombre." : "Le poids est obligatoire.";
-            poids.focus();
-            return;
-        }
-        if (!reps.value) {
-            erreur.textContent = reps.validity.badInput ? "Les répétitions doivent être un nombre." : "Le nombre de répétitions est obligatoire.";
-            reps.focus();
-            return;
-        }
-        if (repos.validity.badInput) {
-            erreur.textContent = "Le repos doit être un nombre de secondes.";
-            repos.focus();
-            return;
-        }
+        const champs = { poids, reps, repos };
+        if (!validerSerie(champs, erreur)) return;
         valider.disabled = true;
         try {
-            const corps = { repetitions: reps.value, repos_sec: repos.value };
-            if (poids) corps.poids_kg = poids.value;
-            const reponse = await api(`/exercice-logs/${exercice.id}/series`, { method: "POST", body: corps });
+            const reponse = await api(`/exercice-logs/${exercice.id}/series`, { method: "POST", body: corpsSerie(champs) });
             if (reponse.ok) {
                 series.push(reponse.data);
-                lignes.append(ligneSerie(reponse.data, avecCharge));
+                dessinerLignes();
                 statut.textContent = `Série ${reponse.data.numero_serie} enregistrée.`;
                 // Poids et repos restent pour la série suivante ; seules les reps sont à ressaisir
                 reps.value = "";
                 majEtat();
                 reps.focus();
-            } else if (reponse.status === 400 && reponse.data?.field === "poids_kg") {
-                erreur.textContent = "Le poids doit être compris entre 0 et 1000 kg.";
-                poids?.focus();
-            } else if (reponse.status === 400 && reponse.data?.field === "repetitions") {
-                erreur.textContent = "Les répétitions doivent être un nombre entier entre 1 et 999.";
-                reps.focus();
-            } else if (reponse.status === 400 && reponse.data?.field === "repos_sec") {
-                erreur.textContent = "Le repos doit être un nombre entier de secondes, entre 0 et 3600.";
-                repos.focus();
-            } else if (reponse.status === 400) {
-                erreur.textContent = avecCharge ? "Le poids et les répétitions sont obligatoires." : "Les répétitions sont obligatoires.";
-            } else if (reponse.status === 404) {
-                erreur.textContent = "Cet exercice n'est plus dans la séance. Rechargez la page.";
             } else {
-                erreur.textContent = "Le serveur a renvoyé une erreur. Réessayez.";
+                afficherErreurSerie(reponse, champs, erreur, "Cet exercice n'est plus dans la séance. Rechargez la page.");
             }
         } catch {
             erreur.textContent = "Impossible de contacter le serveur.";
@@ -214,6 +190,32 @@ function carteExercice(exercice) {
         }
     });
 
+    // « Modifier » d'une ligne : correction de la série, ou suppression (les suivantes sont renumérotées)
+    function corriger(serie) {
+        formulaireCorrection(exercice, serie, {
+            apresModification(corrigee) {
+                // Par id et pas par objet : la ligne a pu être redessinée depuis l'ouverture de la fenêtre
+                const i = series.findIndex((s) => s.id === corrigee.id);
+                if (i !== -1) series[i] = corrigee;
+                dessinerLignes();
+                lignes.querySelector(`[data-serie="${corrigee.id}"]`)?.focus();
+            },
+            apresSuppression() {
+                // Même renumérotation que le serveur : les séries suivantes descendent d'un numéro
+                const i = series.findIndex((s) => s.id === serie.id);
+                if (i === -1) return;
+                series.splice(i, 1);
+                for (const autre of series) {
+                    if (autre.numero_serie > serie.numero_serie) autre.numero_serie -= 1;
+                }
+                dessinerLignes();
+                majEtat();
+                reps.focus();
+            },
+        });
+    }
+
+    dessinerLignes();
     majEtat();
     return h("section", { class: "carte carte-exercice", "aria-labelledby": idTitre },
         h("div", { class: "tete-exercice" },
@@ -228,14 +230,148 @@ function carteExercice(exercice) {
     );
 }
 
-function ligneSerie(serie, avecCharge) {
+// Vérifications avant envoi, communes à la saisie et à la correction d'une série. champs = { poids, reps, repos }
+// (poids vaut null au poids du corps). Écrit le message dans erreur et renvoie false si un champ ne va pas.
+function validerSerie({ poids, reps, repos }, erreur) {
+    let message = "", champ = null;
+    if (poids && (!poids.value || poids.validity.badInput)) {
+        [message, champ] = [poids.validity.badInput ? "Le poids doit être un nombre." : "Le poids est obligatoire.", poids];
+    } else if (!reps.value) {
+        [message, champ] = [reps.validity.badInput ? "Les répétitions doivent être un nombre." : "Le nombre de répétitions est obligatoire.", reps];
+    } else if (repos.validity.badInput) {
+        [message, champ] = ["Le repos doit être un nombre de secondes.", repos];
+    }
+    if (!champ) return true;
+    erreur.textContent = message;
+    champ.focus();
+    return false;
+}
+
+function corpsSerie({ poids, reps, repos }) {
+    const corps = { repetitions: reps.value, repos_sec: repos.value };
+    if (poids) corps.poids_kg = poids.value;
+    return corps;
+}
+
+// Message d'une réponse d'erreur de l'API pour une série (ajout ou correction) ; message404 dépend du cas.
+function afficherErreurSerie(reponse, { poids, reps, repos }, erreur, message404) {
+    const champ = reponse.status === 400 ? reponse.data?.field : null;
+    if (champ === "poids_kg") {
+        erreur.textContent = "Le poids doit être compris entre 0 et 1000 kg.";
+        poids?.focus();
+    } else if (champ === "repetitions") {
+        erreur.textContent = "Les répétitions doivent être un nombre entier entre 1 et 999.";
+        reps.focus();
+    } else if (champ === "repos_sec") {
+        erreur.textContent = "Le repos doit être un nombre entier de secondes, entre 0 et 3600.";
+        repos.focus();
+    } else if (reponse.status === 400) {
+        erreur.textContent = poids ? "Le poids et les répétitions sont obligatoires." : "Les répétitions sont obligatoires.";
+    } else if (reponse.status === 404) {
+        erreur.textContent = message404;
+    } else {
+        erreur.textContent = "Le serveur a renvoyé une erreur. Réessayez.";
+    }
+}
+
+function ligneSerie(serie, exercice, modifier) {
     return h("tr", {},
         h("td", { class: "attenue fort" }, serie.numero_serie),
-        h("td", { class: "fort" }, avecCharge ? formatCharge(serie.poids_kg) : "Poids du corps"),
+        // Une charge reste sur une ligne (« 102,5 kg ») ; « Poids du corps » peut passer sur deux
+        h("td", { class: exercice.type === "charge" ? "fort sans-coupure" : "fort" },
+            exercice.type === "charge" ? formatCharge(serie.poids_kg) : "Poids du corps"),
         h("td", { class: "fort" }, serie.repetitions),
-        h("td", { class: "attenue" }, `${serie.repos_sec} s`),
-        h("td", { class: "a-droite" }, h("span", { class: "coche", role: "img", "aria-label": "Enregistrée" }, "✓")),
+        h("td", { class: "attenue col-repos" }, `${serie.repos_sec} s`),
+        h("td", { class: "a-droite actions-serie" },
+            h("span", { class: "coche", role: "img", "aria-label": "Enregistrée" }, "✓"),
+            h("button", {
+                type: "button", class: "btn btn-ligne", "data-serie": serie.id,
+                "aria-label": `Modifier la série ${serie.numero_serie} de ${exercice.nom}`,
+                onClick: modifier,
+            }, "Modifier"),
+        ),
     );
+}
+
+// Fenêtre « Modifier la série » : mêmes champs qu'à la saisie (pas de poids au poids du corps),
+// avec « Supprimer la série », qui demande confirmation.
+function formulaireCorrection(exercice, serie, { apresModification, apresSuppression }) {
+    const avecCharge = exercice.type === "charge";
+    ouvrirModale(`Modifier la série ${serie.numero_serie} — ${exercice.nom}`, (fermer) => {
+        const poids = avecCharge ? h("input", {
+            id: "correction-poids", type: "number", min: "0.1", max: "999.99", step: "any", inputmode: "decimal", value: serie.poids_kg,
+        }) : null;
+        const reps = h("input", {
+            id: "correction-reps", type: "number", min: "1", max: "999", step: "1", inputmode: "numeric", value: serie.repetitions,
+        });
+        const repos = h("input", {
+            id: "correction-repos", type: "number", min: "0", max: "3600", step: "1", inputmode: "numeric", value: serie.repos_sec,
+        });
+        const erreur = h("p", { class: "erreur-formulaire", role: "alert" });
+        const valider = h("button", { type: "submit", class: "btn btn-primaire" }, "Enregistrer");
+
+        // La confirmation s'ouvre par-dessus : « Annuler » y ramène à la correction, sans perdre ce qui a été tapé
+        async function supprimer() {
+            const ok = await confirmer("Supprimer la série",
+                `Supprimer la série ${serie.numero_serie} de ${exercice.nom} ? Les séries suivantes seront renumérotées.`, "Supprimer");
+            if (!ok) return;
+            fermer();
+            try {
+                const reponse = await api(`/series/${serie.id}`, { method: "DELETE" });
+                if (reponse.ok) {
+                    toast("Série supprimée.");
+                    apresSuppression();
+                } else if (reponse.status === 404) {
+                    toast("Cette série avait déjà été supprimée. Rechargez la page.", "erreur");
+                } else {
+                    toast("Le serveur a renvoyé une erreur. Réessayez.", "erreur");
+                }
+            } catch {
+                toast("Impossible de contacter le serveur.", "erreur");
+            }
+        }
+
+        const form = h("form", { class: "formulaire", novalidate: true },
+            poids && h("label", { for: "correction-poids" }, "Poids (kg)"), poids,
+            h("label", { for: "correction-reps" }, "Reps"), reps,
+            h("label", { for: "correction-repos" }, "Repos (s)"), repos,
+            erreur,
+            h("div", { class: "actions actions-correction" },
+                h("button", { type: "button", class: "btn btn-danger", onClick: supprimer }, "Supprimer la série"),
+                h("button", { type: "button", class: "btn", onClick: fermer }, "Annuler"),
+                valider,
+            ),
+        );
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            erreur.textContent = "";
+            const champs = { poids, reps, repos };
+            if (!validerSerie(champs, erreur)) return;
+            valider.disabled = true;
+            try {
+                const reponse = await api(`/series/${serie.id}`, { method: "PUT", body: corpsSerie(champs) });
+                if (reponse.ok) {
+                    fermer();
+                    toast("Série corrigée.");
+                    apresModification(reponse.data);
+                } else {
+                    afficherErreurSerie(reponse, champs, erreur, "Cette série n'existe plus. Rechargez la page.");
+                }
+            } catch {
+                erreur.textContent = "Impossible de contacter le serveur.";
+            } finally {
+                valider.disabled = false;
+                // Fenêtre fermée pendant l'envoi : l'erreur part en message temporaire pour ne pas être perdue.
+                if (!form.isConnected && erreur.textContent) {
+                    toast(`Série non corrigée : ${erreur.textContent}`, "erreur");
+                }
+            }
+        });
+
+        queueMicrotask(() => reps.focus());
+        return form;
+    });
 }
 
 // « Ajouter un exercice » : seulement des exercices de la liste, et pas ceux déjà dans la séance.

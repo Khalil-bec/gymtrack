@@ -160,6 +160,19 @@ tr:last-child td { border-bottom: none; }
 .tableau-series th:first-child, .tableau-series td:first-child { padding-left: 0; }
 .tableau-series th:last-child, .tableau-series td:last-child { padding-right: 0; }
 .coche { color: #4ade80; font-weight: 700; }
+.btn-ligne { min-height: 44px; padding: 0 12px; font-size: 14px; }
+.actions-serie { white-space: nowrap; }
+.actions-serie .coche { margin-right: 10px; }
+.sans-coupure { white-space: nowrap; }
+/* Téléphone : comme la maquette, la ligne d'une série montre poids et reps ; le repos se voit en la modifiant */
+@media (max-width: 640px) {
+    .tableau-series .col-repos { display: none; }
+    .tableau-series th, .tableau-series td { padding-left: 4px; padding-right: 4px; }
+}
+/* « Supprimer la série » à gauche, loin de « Enregistrer » */
+.actions-correction { flex-wrap: wrap; }
+.actions-correction .btn-danger { margin-right: auto; }
+.btn-danger { color: var(--accent); border-color: var(--accent); }
 .saisie-serie, .ajout-exercice { display: flex; flex-direction: column; gap: 10px; }
 .saisie-serie { border-top: 1px solid var(--bord); padding-top: 12px; }
 .numero-saisie { margin: 0; font-weight: 700; color: var(--accent); }

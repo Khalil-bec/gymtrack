@@ -115,9 +115,10 @@ def lire_infos_seance(data):
 
 
 # Lit et valide une série selon le type de l'exercice : poids obligatoire avec charge, interdit au poids
-# du corps ; reps obligatoires (1 à REPS_MAX) ; repos facultatif en secondes (90 par défaut, 0 à REPOS_MAX).
+# du corps ; reps obligatoires (1 à REPS_MAX) ; repos facultatif en secondes (0 à REPOS_MAX) : absent, il vaut
+# repos_defaut (90 s à l'ajout, le repos déjà enregistré quand on corrige une série).
 # Renvoie (poids_kg, repetitions, repos_sec, erreur) : erreur est le corps JSON d'une 400, ou None.
-def lire_infos_serie(data, type_exercice):
+def lire_infos_serie(data, type_exercice, repos_defaut=None):
     poids_donne = data.get("poids_kg") not in (None, "")
     missing = []
     if type_exercice == "charge" and not poids_donne:
@@ -138,7 +139,7 @@ def lire_infos_serie(data, type_exercice):
     if repetitions is None:
         return None, None, None, {"error": "invalid_field", "field": "repetitions"}
 
-    repos_sec = REPOS_DEFAUT
+    repos_sec = REPOS_DEFAUT if repos_defaut is None else repos_defaut
     if data.get("repos_sec") not in (None, ""):
         repos_sec = lire_entier(data["repos_sec"], 0, REPOS_MAX)
         if repos_sec is None:
@@ -702,7 +703,7 @@ def ajouter_serie(log_id):
         # Le type de l'exercice décide si le poids est obligatoire ou interdit. FOR UPDATE verrouille l'exercice
         # noté jusqu'au commit : deux séries envoyées en même temps ne calculent pas le même numéro.
         cursor.execute("""
-            SELECT x.type FROM exercice_logs l JOIN exercices x ON x.id = l.exercice_id WHERE l.id = %s FOR UPDATE
+            SELECT x.type FROM exercice_logs l JOIN exercices x ON x.id = l.exercice_id WHERE l.id = %s FOR UPDATE OF l
         """, (log_id,))
         exercice = cursor.fetchone()
         if exercice is None:
@@ -726,6 +727,90 @@ def ajouter_serie(log_id):
             "id": serie_id, "numero_serie": numero_serie,
             "poids_kg": poids_kg, "repetitions": repetitions, "repos_sec": repos_sec,
         }), 201
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# Verrouille une série pour la corriger ou la supprimer, dans le même ordre que l'ajout d'une série :
+# d'abord son exercice noté, puis la série elle-même. Un ordre différent pourrait interbloquer deux
+# requêtes simultanées (ajout et suppression sur le même exercice). La série est relue une fois le verrou
+# obtenu : une autre requête a pu la supprimer ou la renuméroter entre-temps.
+# Renvoie {exercice_log_id, type, numero_serie, repos_sec}, ou None si la série n'existe pas (ou plus).
+def verrouiller_serie(cursor, serie_id):
+    cursor.execute("SELECT exercice_log_id FROM series WHERE id = %s", (serie_id,))
+    serie = cursor.fetchone()
+    if serie is None:
+        return None
+    cursor.execute("""
+        SELECT x.type FROM exercice_logs l JOIN exercices x ON x.id = l.exercice_id WHERE l.id = %s FOR UPDATE OF l
+    """, (serie["exercice_log_id"],))
+    exercice = cursor.fetchone()
+    cursor.execute("SELECT numero_serie, repos_sec FROM series WHERE id = %s FOR UPDATE", (serie_id,))
+    verrouillee = cursor.fetchone()
+    if exercice is None or verrouillee is None:
+        return None
+    return {"exercice_log_id": serie["exercice_log_id"], "type": exercice["type"], **verrouillee}
+
+
+# La route PUT /series/<id> corrige une série enregistrée (poids, reps, repos), avec les mêmes règles
+# qu'à l'ajout ; un repos laissé vide garde l'ancien. Son numéro ne change pas.
+@app.route("/series/<int:serie_id>", methods=["PUT"])
+def modifier_serie(serie_id):
+    data = lire_json()
+
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        serie = verrouiller_serie(cursor, serie_id)
+        if serie is None:
+            return jsonify({"error": "serie_not_found"}), 404
+
+        poids_kg, repetitions, repos_sec, erreur = lire_infos_serie(data, serie["type"], repos_defaut=serie["repos_sec"])
+        if erreur:
+            return jsonify(erreur), 400
+
+        cursor.execute(
+            "UPDATE series SET poids_kg = %s, repetitions = %s, repos_sec = %s WHERE id = %s",
+            (poids_kg, repetitions, repos_sec, serie_id)
+        )
+        db.commit()
+        return jsonify({
+            "id": serie_id, "numero_serie": serie["numero_serie"],
+            "poids_kg": poids_kg, "repetitions": repetitions, "repos_sec": repos_sec,
+        })
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route DELETE /series/<id> supprime une série saisie par erreur et renumérote les suivantes
+# du même exercice, pour que la numérotation reste continue (1, 2, 3…).
+@app.route("/series/<int:serie_id>", methods=["DELETE"])
+def supprimer_serie(serie_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        serie = verrouiller_serie(cursor, serie_id)
+        if serie is None:
+            return jsonify({"error": "serie_not_found"}), 404
+
+        cursor.execute("DELETE FROM series WHERE id = %s", (serie_id,))
+        # Ordre croissant : chaque série descend dans la place libérée juste avant elle, sans jamais
+        # prendre un numéro encore utilisé (contrainte UNIQUE exercice_log_id + numero_serie)
+        cursor.execute("""
+            UPDATE series SET numero_serie = numero_serie - 1
+            WHERE exercice_log_id = %s AND numero_serie > %s
+            ORDER BY numero_serie
+        """, (serie["exercice_log_id"], serie["numero_serie"]))
+        db.commit()
+        return "", 204
     except mysql.connector.Error as e:
         return jsonify({"error": "db_error", "message": str(e)}), 500
     finally:

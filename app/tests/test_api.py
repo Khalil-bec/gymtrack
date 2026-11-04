@@ -1326,3 +1326,152 @@ def test_saisie_erreur_db(client, methode, url, payload):
     assert res.status_code == 500
     assert res.get_json()["error"] == "db_error"
     mock_db.close.assert_called_once()
+
+
+# tests ticket 07 : corriger les séries
+def base_serie(serie):
+    """Base mockée pour PUT/DELETE /series/<id>, dans l'ordre des lectures de verrouiller_serie :
+    exercice noté de la série, exercice noté verrouillé (type), série relue verrouillée. serie=None : série inconnue."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    if serie is None:
+        mock_cursor.fetchone.side_effect = [None]
+    else:
+        mock_cursor.fetchone.side_effect = [
+            {"exercice_log_id": 7},
+            {"type": serie["type"]},
+            {"numero_serie": serie["numero_serie"], "repos_sec": serie["repos_sec"]},
+        ]
+    mock_db.cursor.return_value = mock_cursor
+    return mock_db, mock_cursor
+
+
+SERIE_CHARGE = {"type": "charge", "numero_serie": 2, "repos_sec": 120}
+
+
+def modifier_serie(client, serie_id, payload, serie=SERIE_CHARGE):
+    """Envoie un PUT /series/<id> avec la base mockée de base_serie."""
+    mock_db, mock_cursor = base_serie(serie)
+    with patch("main.get_db", return_value=mock_db):
+        res = client.put(f"/series/{serie_id}", data=json.dumps(payload), content_type="application/json")
+    return res, mock_db, mock_cursor
+
+
+def test_verrouillage_dans_le_meme_ordre_que_l_ajout(client):
+    """PUT et DELETE /series/<id> verrouillent d'abord l'exercice noté, puis la série, comme l'ajout d'une série
+    (qui verrouille l'exercice noté) : le même ordre partout évite les interblocages entre requêtes simultanées."""
+    _, _, mock_cursor = modifier_serie(client, 21, {"poids_kg": 80, "repetitions": 6})
+
+    requetes = [c[0][0] for c in mock_cursor.execute.call_args_list]
+    assert "FROM exercice_logs" in requetes[1] and "FOR UPDATE OF l" in requetes[1]
+    assert "FROM series" in requetes[2] and "FOR UPDATE" in requetes[2]
+
+
+def test_modifier_serie(client):
+    """PUT /series/<id> corrige poids, reps et repos (mêmes règles qu'à l'ajout) et renvoie la série corrigée."""
+    res, mock_db, mock_cursor = modifier_serie(client, 21, {"poids_kg": "80", "repetitions": "6", "repos_sec": "150"})
+
+    assert res.status_code == 200
+    assert res.get_json() == {"id": 21, "numero_serie": 2, "poids_kg": 80.0, "repetitions": 6, "repos_sec": 150}
+    requete, params = mock_cursor.execute.call_args[0]
+    assert requete.startswith("UPDATE series") and params == (80.0, 6, 150, 21)
+    mock_db.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("serie, payload, attendu", [
+    (SERIE_CHARGE, {"repetitions": 6}, {"error": "missing_fields", "missing": ["poids_kg"]}),
+    ({**SERIE_CHARGE, "type": "poids_du_corps"}, {"poids_kg": 10, "repetitions": 6}, {"error": "invalid_field", "field": "poids_kg"}),
+    (SERIE_CHARGE, {"poids_kg": 80, "repetitions": 0}, {"error": "invalid_field", "field": "repetitions"}),
+    (SERIE_CHARGE, {"poids_kg": 80, "repetitions": 6, "repos_sec": 4000}, {"error": "invalid_field", "field": "repos_sec"}),
+])
+def test_modifier_serie_validation(client, serie, payload, attendu):
+    """PUT /series/<id> valide comme l'ajout : poids obligatoire avec charge, interdit au poids du corps."""
+    res, mock_db, _ = modifier_serie(client, 21, payload, serie=serie)
+
+    assert res.status_code == 400
+    assert res.get_json() == attendu
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("repos", [None, ""])
+def test_modifier_serie_repos_vide_garde_l_ancien(client, repos):
+    """Corriger une série sans donner de repos garde le repos enregistré (120 s), au lieu de le remettre à 90 s ;
+    au poids du corps, la série corrigée reste sans poids."""
+    payload = {"repetitions": 15}
+    if repos is not None:
+        payload["repos_sec"] = repos
+    res, _, mock_cursor = modifier_serie(client, 22, payload, serie={**SERIE_CHARGE, "type": "poids_du_corps"})
+
+    assert res.status_code == 200
+    assert res.get_json()["repos_sec"] == 120
+    assert mock_cursor.execute.call_args[0][1] == (None, 15, 120, 22)
+
+
+def test_modifier_serie_inconnue_404(client):
+    """PUT /series/<id> pour une série qui n'existe pas doit retourner 404 serie_not_found, sans rien écrire."""
+    res, mock_db, mock_cursor = modifier_serie(client, 999, {"poids_kg": 80, "repetitions": 6}, serie=None)
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "serie_not_found"}
+    assert not any(c[0][0].lstrip().startswith(("UPDATE", "DELETE")) for c in mock_cursor.execute.call_args_list)
+    mock_db.commit.assert_not_called()
+
+
+def test_modifier_serie_supprimee_entre_temps_404(client):
+    """Série supprimée par une autre requête pendant qu'on attendait le verrou : 404, pas un faux « corrigée »."""
+    mock_db, mock_cursor = base_serie(SERIE_CHARGE)
+    mock_cursor.fetchone.side_effect = [{"exercice_log_id": 7}, {"type": "charge"}, None]
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.put("/series/21", data=json.dumps({"poids_kg": 80, "repetitions": 6}), content_type="application/json")
+
+    assert res.status_code == 404
+    mock_db.commit.assert_not_called()
+
+
+def supprimer_serie(client, serie_id, serie=SERIE_CHARGE):
+    """Envoie un DELETE /series/<id> avec la base mockée de base_serie."""
+    mock_db, mock_cursor = base_serie(serie)
+    with patch("main.get_db", return_value=mock_db):
+        res = client.delete(f"/series/{serie_id}")
+    return res, mock_db, mock_cursor
+
+
+def test_supprimer_serie_renumerote(client):
+    """DELETE /series/<id> supprime la série et décale les suivantes du même exercice (3 → 2, 4 → 3…), dans la même
+    transaction ; 204 sans contenu."""
+    res, mock_db, mock_cursor = supprimer_serie(client, 21)
+
+    assert res.status_code == 204
+    requetes = [(c[0][0], c[0][1]) for c in mock_cursor.execute.call_args_list]
+    assert requetes[3] == ("DELETE FROM series WHERE id = %s", (21,))
+    renumerotation, params = requetes[4]
+    # Dans l'ordre croissant : chaque série prend la place libérée juste avant elle, sans heurter UNIQUE
+    assert "numero_serie = numero_serie - 1" in renumerotation and "ORDER BY numero_serie" in renumerotation
+    assert params == (7, 2)
+    mock_db.commit.assert_called_once()
+
+
+def test_supprimer_serie_inconnue_404(client):
+    """DELETE /series/<id> pour une série qui n'existe pas doit retourner 404 serie_not_found, sans rien écrire."""
+    res, mock_db, mock_cursor = supprimer_serie(client, 999, serie=None)
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "serie_not_found"}
+    assert not any(c[0][0].lstrip().startswith(("UPDATE", "DELETE")) for c in mock_cursor.execute.call_args_list)
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("methode", ["put", "delete"])
+def test_series_erreur_db(client, methode):
+    """PUT et DELETE /series/<id> : une erreur MySQL doit donner une 500 db_error en JSON et fermer la connexion."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.Error(msg="Lost connection")
+
+    with patch("main.get_db", return_value=mock_db):
+        res = getattr(client, methode)("/series/21", data=json.dumps({"poids_kg": 80, "repetitions": 6}),
+                                       content_type="application/json")
+
+    assert res.status_code == 500
+    assert res.get_json()["error"] == "db_error"
+    mock_db.close.assert_called_once()
