@@ -62,7 +62,7 @@ L'objectif n'est pas juste de faire tourner une app, c'est de construire une sta
 
 **Côté frontend :**
 - Interface pour coachs servie par Nginx : HTML/CSS/JS sans framework ni étape de build (modules ES)
-- Navigation entre pages par l'adresse (`#/clients`, `#/clients/3` pour un profil, `#/exercices`)
+- Navigation entre pages par l'adresse (`#/clients`, `#/clients/3` pour un profil, `#/seances/42` pour une séance, `#/exercices`)
 - Graphique du poids de corps avec Chart.js (version exacte 4.6.1, vérifiée par empreinte `integrity`) et sa vue en tableau
 - Adresse de l'API dans un seul fichier, `frontend/config.js`
 - Formulaires en fenêtres `<dialog>` avec erreurs affichées sous le champ, messages temporaires au lieu d'`alert()`
@@ -97,8 +97,11 @@ exercices   (liste partagée ; pas encore reliée aux séances)
 | GET | `/exercices` | Liste partagée des exercices (nom, type `charge` ou `poids_du_corps`, nombre de séances qui l'utilisent), triée par nom |
 | POST | `/exercices` | Ajouter un exercice (nom, type ; 409 si le nom existe déjà). Pas de modification ni de suppression |
 | GET | `/seances` | Historique des séances avec nom de l'athlète |
-| POST | `/seances` | Créer une séance |
-| GET | `/seances/<id>` | Détail d'une séance — exercices + séries |
+| GET | `/athletes/<id>/seances` | Séances d'un athlète, la plus récente d'abord, avec le nombre d'exercices (404 si inconnu) |
+| POST | `/athletes/<id>/seances` | Créer une séance pour cet athlète (titre et date obligatoires, pas de date à venir ; duree_min facultative, 1 à 600) |
+| GET | `/seances/<id>` | En-tête d'une séance : titre, date, durée, athlète (404 si inconnue) |
+| PUT | `/seances/<id>` | Modifier le titre, la date et la durée d'une séance |
+| DELETE | `/seances/<id>` | Supprimer une séance, avec ses exercices et séries (suppression en cascade) |
 
 ---
 

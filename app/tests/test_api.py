@@ -845,3 +845,270 @@ def test_create_exercice_autre_contrainte_500(client):
 
     assert res.status_code == 500
     assert res.get_json()["error"] == "db_error"
+
+
+# tests GET /athletes/<id>/seances
+def test_get_seances_athlete(client):
+    """GET /athletes/<id>/seances renvoie les séances de ce client seulement, la plus récente d'abord, avec le nombre d'exercices."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = {"id": 1}
+    mock_cursor.fetchall.return_value = [
+        {"id": 2, "titre": "Push", "date_seance": datetime.date(2026, 10, 28), "duree_min": 75, "nb_exercices": 2},
+        {"id": 1, "titre": "Pull", "date_seance": datetime.date(2026, 10, 25), "duree_min": None, "nb_exercices": 0},
+    ]
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/athletes/1/seances")
+
+    assert res.status_code == 200
+    assert res.get_json() == [
+        {"id": 2, "titre": "Push", "date_seance": "2026-10-28", "duree_min": 75, "nb_exercices": 2},
+        {"id": 1, "titre": "Pull", "date_seance": "2026-10-25", "duree_min": None, "nb_exercices": 0},
+    ]
+    requete, params = mock_cursor.execute.call_args[0]
+    assert "WHERE s.athlete_id = %s" in requete and "ORDER BY s.date_seance DESC" in requete
+    assert params == (1,)
+
+
+def test_get_seances_athlete_inconnu_404(client):
+    """GET /athletes/<id>/seances pour un client qui n'existe pas doit retourner 404 athlete_not_found."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.fetchone.return_value = None
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/athletes/999/seances")
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "athlete_not_found"}
+
+
+# tests POST /athletes/<id>/seances
+def poster_seance(client, athlete_id, payload, mock_db=None):
+    """Envoie un POST /athletes/<id>/seances avec un get_db mocké (nouvel id = 42 par défaut)."""
+    if mock_db is None:
+        mock_db = MagicMock()
+        mock_db.cursor.return_value.lastrowid = 42
+    with patch("main.get_db", return_value=mock_db):
+        return client.post(f"/athletes/{athlete_id}/seances", data=json.dumps(payload), content_type="application/json")
+
+
+def test_create_seance_success(client):
+    """POST /athletes/<id>/seances crée la séance pour ce client (pris dans l'URL) et renvoie 201 avec son id."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.lastrowid = 42
+    mock_db.cursor.return_value = mock_cursor
+
+    res = poster_seance(client, 3, {"titre": "  Push  ", "date_seance": "2026-10-28", "duree_min": 75}, mock_db)
+
+    assert res.status_code == 201
+    assert res.get_json() == {"id": 42}
+    assert mock_cursor.execute.call_args[0][1] == (3, "Push", "2026-10-28", 75)
+    mock_db.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("duree", [None, ""])
+def test_create_seance_sans_duree(client, duree):
+    """La durée est facultative : absente ou vide, elle est enregistrée à NULL."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.lastrowid = 42
+    mock_db.cursor.return_value = mock_cursor
+
+    res = poster_seance(client, 3, {"titre": "Push", "date_seance": "2026-10-28", "duree_min": duree}, mock_db)
+
+    assert res.status_code == 201
+    assert mock_cursor.execute.call_args[0][1][3] is None
+
+
+@pytest.mark.parametrize("payload, missing", [
+    ({}, ["titre", "date_seance"]),
+    ({"titre": "   ", "date_seance": "2026-10-28"}, ["titre"]),
+    ({"titre": "Push", "date_seance": ""}, ["date_seance"]),
+])
+def test_create_seance_champs_manquants(client, payload, missing):
+    """POST /athletes/<id>/seances sans titre ou sans date doit retourner 400 missing_fields."""
+    res = poster_seance(client, 3, payload)
+
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "missing_fields", "missing": missing}
+
+
+DANS_3_JOURS = (datetime.date.today() + datetime.timedelta(days=3)).isoformat()
+
+
+@pytest.mark.parametrize("payload, champ", [
+    ({"titre": 5, "date_seance": "2026-10-28"}, "titre"),
+    ({"titre": "x" * 201, "date_seance": "2026-10-28"}, "titre"),
+    ({"titre": "Push", "date_seance": "2026-02-30"}, "date_seance"),
+    ({"titre": "Push", "date_seance": DANS_3_JOURS}, "date_seance"),
+    ({"titre": "Push", "date_seance": "2026-10-28", "duree_min": 0}, "duree_min"),
+    ({"titre": "Push", "date_seance": "2026-10-28", "duree_min": -30}, "duree_min"),
+    ({"titre": "Push", "date_seance": "2026-10-28", "duree_min": 601}, "duree_min"),
+    ({"titre": "Push", "date_seance": "2026-10-28", "duree_min": 75.5}, "duree_min"),
+    ({"titre": "Push", "date_seance": "2026-10-28", "duree_min": True}, "duree_min"),
+    ({"titre": "Push", "date_seance": "2026-10-28", "duree_min": "une heure"}, "duree_min"),
+    # « ² » passe str.isdigit() mais int() le refuse : doit rester une 400, pas une 500
+    ({"titre": "Push", "date_seance": "2026-10-28", "duree_min": "²"}, "duree_min"),
+])
+def test_create_seance_champ_invalide(client, payload, champ):
+    """POST /athletes/<id>/seances : titre pas texte ou trop long, date invalide ou à venir, durée hors 1–600 min → 400 invalid_field."""
+    mock_db = MagicMock()
+
+    res = poster_seance(client, 3, payload, mock_db)
+
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "invalid_field", "field": champ}
+    mock_db.cursor.assert_not_called()
+
+
+def test_create_seance_duree_en_texte(client):
+    """Une durée envoyée en texte par le formulaire ("75") est acceptée et enregistrée en nombre."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.lastrowid = 42
+    mock_db.cursor.return_value = mock_cursor
+
+    res = poster_seance(client, 3, {"titre": "Push", "date_seance": "2026-10-28", "duree_min": "75"}, mock_db)
+
+    assert res.status_code == 201
+    assert mock_cursor.execute.call_args[0][1][3] == 75
+
+
+def test_create_seance_athlete_inconnu_404(client):
+    """POST /athletes/<id>/seances pour un client qui n'existe pas (clé étrangère refusée) doit retourner 404."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.IntegrityError(msg="FK", errno=1452)
+
+    res = poster_seance(client, 999, {"titre": "Push", "date_seance": "2026-10-28"}, mock_db)
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "athlete_not_found"}
+
+
+# tests GET /seances/<id>
+def test_get_seance(client):
+    """GET /seances/<id> renvoie l'en-tête de la séance : titre, date (ISO), durée, le client (id + nom)
+    et le nombre d'exercices notés."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = {
+        "id": 42, "titre": "Push", "date_seance": datetime.date(2026, 10, 28), "duree_min": None,
+        "athlete_id": 3, "athlete_nom": "Paulo Dybala", "nb_exercices": 2,
+    }
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/seances/42")
+
+    assert res.status_code == 200
+    assert res.get_json() == {
+        "id": 42, "titre": "Push", "date_seance": "2026-10-28", "duree_min": None,
+        "athlete_id": 3, "athlete_nom": "Paulo Dybala", "nb_exercices": 2,
+    }
+    requete, params = mock_cursor.execute.call_args[0]
+    assert "nb_exercices" in requete and params == (42,)
+
+
+def test_get_seance_inconnue_404(client):
+    """GET /seances/<id> pour une séance qui n'existe pas doit retourner 404 seance_not_found."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.fetchone.return_value = None
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/seances/999")
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "seance_not_found"}
+
+
+# tests PUT /seances/<id>
+def modifier_seance(client, seance_id, payload, rowcount=1):
+    """Envoie un PUT /seances/<id> avec un get_db mocké ; rowcount = lignes trouvées par l'UPDATE (0 = séance inconnue)."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.rowcount = rowcount
+    mock_db.cursor.return_value = mock_cursor
+    with patch("main.get_db", return_value=mock_db):
+        res = client.put(f"/seances/{seance_id}", data=json.dumps(payload), content_type="application/json")
+    return res, mock_db, mock_cursor
+
+
+def test_update_seance_success(client):
+    """PUT /seances/<id> remplace titre, date et durée (ajoutée après coup) et renvoie la séance modifiée."""
+    res, mock_db, mock_cursor = modifier_seance(client, 42, {"titre": "Push lourd", "date_seance": "2026-10-27", "duree_min": "80"})
+
+    assert res.status_code == 200
+    assert res.get_json() == {"id": 42, "titre": "Push lourd", "date_seance": "2026-10-27", "duree_min": 80}
+    assert mock_cursor.execute.call_args[0][1] == ("Push lourd", "2026-10-27", 80, 42)
+    mock_db.commit.assert_called_once()
+
+
+def test_update_seance_inconnue_404(client):
+    """PUT /seances/<id> pour une séance qui n'existe pas (aucune ligne trouvée) doit retourner 404, sans valider."""
+    res, mock_db, _ = modifier_seance(client, 999, {"titre": "Push", "date_seance": "2026-10-27"}, rowcount=0)
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "seance_not_found"}
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("payload, attendu", [
+    ({"date_seance": "2026-10-27"}, {"error": "missing_fields", "missing": ["titre"]}),
+    ({"titre": "Push", "date_seance": "2026-10-27", "duree_min": 0}, {"error": "invalid_field", "field": "duree_min"}),
+])
+def test_update_seance_validation(client, payload, attendu):
+    """PUT /seances/<id> valide comme la création (même fonction) : 400 sans toucher la base."""
+    res, mock_db, _ = modifier_seance(client, 42, payload)
+
+    assert res.status_code == 400
+    assert res.get_json() == attendu
+    mock_db.cursor.assert_not_called()
+
+
+# tests DELETE /seances/<id>
+def test_delete_seance(client):
+    """DELETE /seances/<id> supprime la séance (ses exercices et séries partent en cascade) et retourne 204."""
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.rowcount = 1
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.delete("/seances/42")
+
+    assert res.status_code == 204
+    assert mock_cursor.execute.call_args[0][1] == (42,)
+    mock_db.commit.assert_called_once()
+
+
+def test_delete_seance_inconnue_404(client):
+    """DELETE /seances/<id> pour une séance qui n'existe pas doit retourner 404 seance_not_found."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.rowcount = 0
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.delete("/seances/999")
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "seance_not_found"}
+
+
+@pytest.mark.parametrize("methode, url", [
+    ("get", "/athletes/1/seances"), ("post", "/athletes/1/seances"),
+    ("get", "/seances/42"), ("put", "/seances/42"), ("delete", "/seances/42"),
+])
+def test_seances_erreur_db(client, methode, url):
+    """Routes des séances : une erreur MySQL doit donner une 500 db_error en JSON et fermer la connexion."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.Error(msg="Lost connection")
+
+    with patch("main.get_db", return_value=mock_db):
+        res = getattr(client, methode)(url, data=json.dumps({"titre": "Push", "date_seance": "2026-10-28"}),
+                                       content_type="application/json")
+
+    assert res.status_code == 500
+    assert res.get_json()["error"] == "db_error"
+    mock_db.close.assert_called_once()

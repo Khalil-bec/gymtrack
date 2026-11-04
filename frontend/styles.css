@@ -144,6 +144,9 @@ tr:last-child td { border-bottom: none; }
 .lien-action { font-weight: 700; text-decoration: none; white-space: nowrap; }
 .clair { color: var(--clair); }
 .tableau-exercices table { min-width: 560px; }
+.carte-tableau .tableau-seances { min-width: 560px; }
+.carte-tete.carte-tete-tableau { padding: 12px 16px 8px; margin-bottom: 0; }
+.infos-seance { display: flex; flex-wrap: wrap; gap: 16px; }
 
 /* Page Exercices : filtres par type et étiquette du type */
 .filtres { display: flex; flex-wrap: wrap; gap: 8px; }

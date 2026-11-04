@@ -16,6 +16,8 @@ EMAIL_VALIDE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # Longueurs maximales des colonnes nom (athletes, exercices) et athletes.email (db/init/01-schema.sql)
 NOM_MAX = 100
 EMAIL_MAX = 150
+TITRE_MAX = 200   # seances.titre
+DUREE_MAX = 600   # durée d'une séance en minutes (10 h)
 # Valeurs de exercices.type : avec charge ou au poids du corps
 TYPES_EXERCICE = ("charge", "poids_du_corps")
 
@@ -56,6 +58,47 @@ def lire_date(valeur):
         return datetime.date.fromisoformat(valeur)
     except ValueError:
         return None
+
+
+# Comme lire_date, mais refuse aussi une date à venir (pesée, séance : on note ce qui a eu lieu).
+# Un jour de marge, car l'horloge du serveur (UTC) peut être en retard d'un jour sur celle
+# du coach (ex. 0 h 30 à Paris = 23 h 30 la veille en UTC).
+def lire_date_passee(valeur):
+    date = lire_date(valeur)
+    if date is None or date > datetime.date.today() + datetime.timedelta(days=1):
+        return None
+    return date
+
+
+# Lit et valide une séance (création et modification) : titre et date obligatoires, durée facultative
+# en minutes (entier de 1 à 600, ou texte numérique venant du formulaire ; vide → NULL).
+# Renvoie (titre, date, duree_min, erreur) : erreur est le corps JSON d'une 400, ou None.
+def lire_infos_seance(data):
+    if data.get("titre") is not None and not isinstance(data["titre"], str):
+        return None, None, None, {"error": "invalid_field", "field": "titre"}
+    titre = " ".join((data.get("titre") or "").split())
+
+    missing = [champ for champ, valeur in (("titre", titre), ("date_seance", data.get("date_seance"))) if not valeur]
+    if missing:
+        return None, None, None, {"error": "missing_fields", "missing": missing}
+    if len(titre) > TITRE_MAX:
+        return None, None, None, {"error": "invalid_field", "field": "titre"}
+
+    date_seance = lire_date_passee(data["date_seance"])
+    if date_seance is None:
+        return None, None, None, {"error": "invalid_field", "field": "date_seance"}
+
+    duree_min = data.get("duree_min")
+    if duree_min in (None, ""):
+        duree_min = None
+    else:
+        # isdecimal et pas isdigit : « ² » est un « chiffre » pour isdigit mais int() le refuse
+        if isinstance(duree_min, str) and duree_min.strip().isdecimal():
+            duree_min = int(duree_min)
+        # bool est un int en Python : True ne doit pas passer pour 1 minute
+        if isinstance(duree_min, bool) or not isinstance(duree_min, int) or not 1 <= duree_min <= DUREE_MAX:
+            return None, None, None, {"error": "invalid_field", "field": "duree_min"}
+    return titre, date_seance, duree_min, None
 
 
 # Corps JSON de la requête ; {} s'il est absent, invalide ou n'est pas un objet (liste, texte…).
@@ -326,10 +369,8 @@ def create_pesee(athlete_id):
     if missing:
         return jsonify({"error": "missing_fields", "missing": missing}), 400
 
-    date_pesee = lire_date(data["date_pesee"])
-    # Pas de pesée dans le futur ; un jour de marge car l'horloge du serveur (UTC) peut être
-    # en retard d'un jour sur celle du coach (ex. 0 h 30 à Paris = 23 h 30 la veille en UTC).
-    if date_pesee is None or date_pesee > datetime.date.today() + datetime.timedelta(days=1):
+    date_pesee = lire_date_passee(data["date_pesee"])
+    if date_pesee is None:
         return jsonify({"error": "invalid_field", "field": "date_pesee"}), 400
     poids_kg = lire_poids(data["poids_kg"])
     if poids_kg is None:
@@ -434,37 +475,63 @@ def create_exercice():
             db.close()
 
 
-# La route /seances est une route qui permet de créer une nouvelle séance.
-@app.route("/seances", methods=["POST"])
-def create_seance():
-    data = request.get_json(silent=True) or {}
+# --- Séances ---
 
-    athlete_id = data.get("athlete_id")
-    titre = data.get("titre")
-    date_seance = data.get("date_seance")
-    duree_min = data.get("duree_min")
+# La route /athletes/<id>/seances renvoie les séances d'un client, la plus récente d'abord,
+# avec le nombre d'exercices notés dans chacune.
+@app.route("/athletes/<int:athlete_id>/seances")
+def get_seances_athlete(athlete_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,))
+        if cursor.fetchone() is None:
+            return jsonify({"error": "athlete_not_found"}), 404
+        cursor.execute("""
+            SELECT s.id, s.titre, s.date_seance, s.duree_min, COUNT(e.id) AS nb_exercices
+            FROM seances s
+            LEFT JOIN exercice_logs e ON e.seance_id = s.id
+            WHERE s.athlete_id = %s
+            GROUP BY s.id
+            ORDER BY s.date_seance DESC, s.id DESC
+        """, (athlete_id,))
+        return jsonify(cursor.fetchall())
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
 
-    missing = [k for k in ("athlete_id", "titre", "date_seance") if not data.get(k)]
-    if missing:
-        return jsonify({"error": "missing_fields", "missing": missing}), 400
 
+# La route POST /athletes/<id>/seances crée une séance pour ce client : le client vient de l'URL
+# (la page profil), jamais du formulaire. Titre et date obligatoires, durée facultative.
+@app.route("/athletes/<int:athlete_id>/seances", methods=["POST"])
+def create_seance(athlete_id):
+    titre, date_seance, duree_min, erreur = lire_infos_seance(lire_json())
+    if erreur:
+        return jsonify(erreur), 400
+
+    db = None
     try:
         db = get_db()
         cursor = db.cursor()
         cursor.execute(
-            "INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES (%s,%s,%s,%s)",
-            (athlete_id, titre, date_seance, duree_min)
+            "INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES (%s, %s, %s, %s)",
+            (athlete_id, titre, date_seance.isoformat(), duree_min)
         )
         db.commit()
-        new_id = cursor.lastrowid
-        db.close()
-        return jsonify({"id": new_id}), 201
-    except mysql.connector.MySQLError as e:
-        try:
-            db.close()
-        except Exception:
-            pass
+        return jsonify({"id": cursor.lastrowid}), 201
+    except mysql.connector.IntegrityError as e:
+        # 1452 = clé étrangère vers un client qui n'existe pas
+        if e.errno == ER_NO_REFERENCED_ROW:
+            return jsonify({"error": "athlete_not_found"}), 404
         return jsonify({"error": "db_error", "message": str(e)}), 500
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
 
 
 # La route /seances est une route qui permet de récupérer toutes les séances de la base de données. 
@@ -482,22 +549,80 @@ def get_seances():
     db.close()
     return jsonify(seances)
 
-# La route /seances/<int:seance_id> est une route qui permet de récupérer les détails d'une séance spécifique.
+# La route /seances/<id> renvoie l'en-tête d'une séance (titre, date, durée), son client
+# et le nombre d'exercices notés.
+# Les exercices et séries s'y ajouteront avec la saisie des séances.
 @app.route("/seances/<int:seance_id>")
-def get_seance_detail(seance_id):
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT e.nom as exercice, s.numero_serie,
-               s.poids_kg, s.repetitions, s.repos_sec
-        FROM exercice_logs e
-        JOIN series s ON s.exercice_id = e.id
-        WHERE e.seance_id = %s
-        ORDER BY e.ordre, s.numero_serie
-    """, (seance_id,))
-    detail = cursor.fetchall()
-    db.close()
-    return jsonify(detail)
+def get_seance(seance_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT s.id, s.titre, s.date_seance, s.duree_min, s.athlete_id, a.nom AS athlete_nom,
+                   (SELECT COUNT(*) FROM exercice_logs e WHERE e.seance_id = s.id) AS nb_exercices
+            FROM seances s
+            JOIN athletes a ON a.id = s.athlete_id
+            WHERE s.id = %s
+        """, (seance_id,))
+        seance = cursor.fetchone()
+        if seance is None:
+            return jsonify({"error": "seance_not_found"}), 404
+        return jsonify(seance)
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route PUT /seances/<id> modifie le titre, la date et la durée d'une séance
+# (la durée peut être ajoutée après coup). Mêmes règles qu'à la création.
+@app.route("/seances/<int:seance_id>", methods=["PUT"])
+def update_seance(seance_id):
+    titre, date_seance, duree_min, erreur = lire_infos_seance(lire_json())
+    if erreur:
+        return jsonify(erreur), 400
+
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute(
+            "UPDATE seances SET titre = %s, date_seance = %s, duree_min = %s WHERE id = %s",
+            (titre, date_seance.isoformat(), duree_min, seance_id)
+        )
+        # rowcount = lignes trouvées (FOUND_ROWS dans get_db) : 0 veut dire séance inconnue
+        if cursor.rowcount == 0:
+            return jsonify({"error": "seance_not_found"}), 404
+        db.commit()
+        return jsonify({"id": seance_id, "titre": titre, "date_seance": date_seance, "duree_min": duree_min})
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route DELETE /seances/<id> supprime une séance ; ses exercices notés et leurs séries
+# partent avec elle (ON DELETE CASCADE dans le schéma).
+@app.route("/seances/<int:seance_id>", methods=["DELETE"])
+def delete_seance(seance_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("DELETE FROM seances WHERE id = %s", (seance_id,))
+        if cursor.rowcount == 0:
+            return jsonify({"error": "seance_not_found"}), 404
+        db.commit()
+        return "", 204
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

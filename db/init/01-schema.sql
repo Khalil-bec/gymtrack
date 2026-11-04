@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS exercice_logs (
   seance_id  INT NOT NULL,
   nom        VARCHAR(100) NOT NULL,
   ordre      INT DEFAULT 1,
-  FOREIGN KEY (seance_id) REFERENCES seances(id)
+  -- Supprimer une séance supprime ses exercices notés (et, en cascade, leurs séries)
+  FOREIGN KEY (seance_id) REFERENCES seances(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS series (
@@ -52,7 +53,7 @@ CREATE TABLE IF NOT EXISTS series (
   poids_kg       DECIMAL(5,2),
   repetitions    INT NOT NULL,
   repos_sec      INT DEFAULT 90,
-  FOREIGN KEY (exercice_id) REFERENCES exercice_logs(id)
+  FOREIGN KEY (exercice_id) REFERENCES exercice_logs(id) ON DELETE CASCADE
 );
 
 -- Données de test

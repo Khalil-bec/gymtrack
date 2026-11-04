@@ -1,10 +1,11 @@
 // Profil d'un client : infos, résumé, poids de corps (graphique ou tableau) et pesées.
 import { api } from "../api.js";
 import {
-    h, formatDate, formatDateLongue, formatMoisAnnee, formatPoids, formatEvolution,
+    h, formatDate, formatDateLongue, formatMoisAnnee, formatPoids, formatEvolution, formatDuree,
     aujourdhuiIso, toast, ouvrirModale, confirmer, etat, initiales,
 } from "../ui.js";
 import { formulaireClient } from "./clients.js";
+import { formulaireSeance } from "./seance.js";
 
 export async function pageProfil(conteneur, id) {
     // Graphique de cette page : détruit avant d'en dessiner un autre et quand on quitte la page,
@@ -23,9 +24,11 @@ export async function pageProfil(conteneur, id) {
 
     async function charger() {
         const numero = ++dernierChargement;
-        let profil, pesees;
+        let profil, pesees, seances;
         try {
-            [profil, pesees] = await Promise.all([api(`/athletes/${id}`), api(`/athletes/${id}/pesees`)]);
+            [profil, pesees, seances] = await Promise.all([
+                api(`/athletes/${id}`), api(`/athletes/${id}/pesees`), api(`/athletes/${id}/seances`),
+            ]);
         } catch {
             if (numero !== dernierChargement || !conteneur.isConnected) return;
             conteneur.replaceChildren(fil("…"), etat("Impossible de contacter le serveur.",
@@ -38,15 +41,15 @@ export async function pageProfil(conteneur, id) {
             afficherIntrouvable(conteneur);
             return;
         }
-        if (!profil.ok || !pesees.ok || !Array.isArray(pesees.data)) {
+        if (!profil.ok || !pesees.ok || !Array.isArray(pesees.data) || !seances.ok || !Array.isArray(seances.data)) {
             conteneur.replaceChildren(fil("…"), etat("Le serveur a renvoyé une erreur.",
                 h("button", { type: "button", class: "btn", onClick: charger }, "Réessayer")));
             return;
         }
-        afficher(profil.data, pesees.data);
+        afficher(profil.data, pesees.data, seances.data);
     }
 
-    function afficher(client, pesees) {
+    function afficher(client, pesees, seances) {
         graphique?.destroy();
         graphique = null;
 
@@ -85,6 +88,11 @@ export async function pageProfil(conteneur, id) {
                 h("div", { class: "actions-entete" },
                     h("button", { type: "button", class: "btn", onClick: () => formulaireClient(charger, client) }, "Modifier"),
                     h("button", { type: "button", class: "btn", onClick: () => formulairePesee(id, charger) }, "Ajouter une pesée"),
+                    h("button", {
+                        type: "button", class: "btn btn-primaire",
+                        // La séance créée s'ouvre tout de suite : c'est là qu'on la remplit
+                        onClick: () => formulaireSeance((idSeance) => { location.hash = `#/seances/${idSeance}`; }, { athleteId: id }),
+                    }, "+ Nouvelle séance"),
                 ),
             ),
             h("section", { class: "tuiles", "aria-label": "Résumé" },
@@ -101,6 +109,15 @@ export async function pageProfil(conteneur, id) {
                 h("p", { class: "legende" }, "Pesées (kg)"),
                 zonePoids,
                 basculer,
+            ),
+            h("section", { class: "carte carte-tableau", "aria-labelledby": "titre-seances" },
+                h("div", { class: "carte-tete carte-tete-tableau" },
+                    h("h2", { id: "titre-seances" }, "Séances"),
+                    h("span", { class: "attenue" }, seances.length === 1 ? "1 séance" : `${seances.length} séances`),
+                ),
+                seances.length === 0
+                    ? etat("Aucune séance pour l'instant. Créez-en une avec « Nouvelle séance ».")
+                    : tableauSeances(seances),
             ),
         );
         dessinerPoids();
@@ -227,6 +244,36 @@ function tableauPesees(pesees, supprimer) {
             h("thead", {}, h("tr", {},
                 h("th", { scope: "col" }, "Date"),
                 h("th", { scope: "col" }, "Poids"),
+                h("th", { scope: "col" }, h("span", { class: "visuellement-cache" }, "Actions")),
+            )),
+            h("tbody", {}, lignes),
+        ),
+    );
+}
+
+// Séances du client, la plus récente en premier (ordre donné par l'API).
+function tableauSeances(seances) {
+    const lignes = seances.map((seance) =>
+        h("tr", {},
+            h("td", { class: "attenue" }, formatDate(seance.date_seance)),
+            h("td", { class: "fort clair" }, seance.titre),
+            h("td", {}, seance.nb_exercices),
+            h("td", {}, formatDuree(seance.duree_min)),
+            h("td", { class: "a-droite" },
+                h("a", {
+                    class: "lien-action", href: `#/seances/${seance.id}`,
+                    "aria-label": `Ouvrir la séance « ${seance.titre} » du ${formatDate(seance.date_seance)}`,
+                }, "Ouvrir"),
+            ),
+        ),
+    );
+    return h("div", { class: "defilement" },
+        h("table", { class: "tableau-seances" },
+            h("thead", {}, h("tr", {},
+                h("th", { scope: "col" }, "Date"),
+                h("th", { scope: "col" }, "Titre"),
+                h("th", { scope: "col" }, "Exercices"),
+                h("th", { scope: "col" }, "Durée"),
                 h("th", { scope: "col" }, h("span", { class: "visuellement-cache" }, "Actions")),
             )),
             h("tbody", {}, lignes),

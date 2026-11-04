@@ -65,6 +65,11 @@ export function formatEvolution(kg) {
     return `${signe}${nombre.format(Math.abs(kg))} kg`;
 }
 
+// 75 → "75 min" ; vide → "—".
+export function formatDuree(minutes) {
+    return minutes === null || minutes === undefined ? "—" : `${minutes} min`;
+}
+
 // Message temporaire en bas de l'écran, à la place de alert().
 export function toast(message, type = "succes") {
     const zone = document.getElementById("toasts");
