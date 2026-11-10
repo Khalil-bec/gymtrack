@@ -13,8 +13,8 @@ FROM python:3.11-alpine
 COPY main.py .
 COPY --from=builder /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
-
-
 EXPOSE 5000
+RUN adduser -D -S appuser
+USER appuser
 
 CMD [ "python", "main.py" ]
