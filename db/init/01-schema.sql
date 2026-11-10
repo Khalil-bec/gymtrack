@@ -61,47 +61,24 @@ CREATE TABLE IF NOT EXISTS series (
   FOREIGN KEY (exercice_log_id) REFERENCES exercice_logs(id) ON DELETE CASCADE
 );
 
--- Données de test
-INSERT INTO athletes (nom, email) VALUES
-  ('Khalil', 'khalil@gymtrack.com');
-
-INSERT INTO pesees (athlete_id, date_pesee, poids_kg) VALUES
-  (1, '2026-03-22', 80.5);
-
-INSERT INTO exercices (nom, type) VALUES
-  ('Développé couché', 'charge'),
-  ('Développé incliné haltères', 'charge'),
-  ('Développé militaire', 'charge'),
-  ('Élévations latérales', 'charge'),
-  ('Squat', 'charge'),
-  ('Soulevé de terre', 'charge'),
-  ('Presse à cuisses', 'charge'),
-  ('Fentes haltères', 'charge'),
-  ('Hip thrust', 'charge'),
-  ('Rowing barre', 'charge'),
-  ('Tirage vertical', 'charge'),
-  ('Curl biceps', 'charge'),
-  ('Extension triceps à la poulie', 'charge'),
-  ('Tractions', 'poids_du_corps'),
-  ('Dips', 'poids_du_corps'),
-  ('Pompes', 'poids_du_corps'),
-  ('Relevés de jambes', 'poids_du_corps'),
-  ('Crunchs', 'poids_du_corps');
-
-INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES
-  (1, 'Push Day — Poitrine/Épaules/Triceps', '2026-03-22', 75),
-  (1, 'Pull Day — Dos/Biceps', '2026-03-20', 65);
-
--- exercice_id : 1 Développé couché, 3 Développé militaire, 14 Tractions, 10 Rowing barre
-INSERT INTO exercice_logs (seance_id, exercice_id, ordre) VALUES
-  (1, 1, 1),
-  (1, 3, 2),
-  (2, 14, 1),
-  (2, 10, 2);
-
--- Tractions (exercice noté 3) : au poids du corps, donc sans poids
-INSERT INTO series (exercice_log_id, numero_serie, poids_kg, repetitions) VALUES
-  (1, 1, 80, 8), (1, 2, 80, 7), (1, 3, 75, 8),
-  (2, 1, 50, 10), (2, 2, 50, 9),
-  (3, 1, NULL, 8), (3, 2, NULL, 7),
-  (4, 1, 60, 10), (4, 2, 60, 9);
+-- Liste d'exercices de départ (les données de démo sont dans 02-donnees-demo.sql)
+-- Ids explicites : 02-donnees-demo.sql y fait référence
+INSERT INTO exercices (id, nom, type) VALUES
+  (1, 'Développé couché', 'charge'),
+  (2, 'Développé incliné haltères', 'charge'),
+  (3, 'Développé militaire', 'charge'),
+  (4, 'Élévations latérales', 'charge'),
+  (5, 'Squat', 'charge'),
+  (6, 'Soulevé de terre', 'charge'),
+  (7, 'Presse à cuisses', 'charge'),
+  (8, 'Fentes haltères', 'charge'),
+  (9, 'Hip thrust', 'charge'),
+  (10, 'Rowing barre', 'charge'),
+  (11, 'Tirage vertical', 'charge'),
+  (12, 'Curl biceps', 'charge'),
+  (13, 'Extension triceps à la poulie', 'charge'),
+  (14, 'Tractions', 'poids_du_corps'),
+  (15, 'Dips', 'poids_du_corps'),
+  (16, 'Pompes', 'poids_du_corps'),
+  (17, 'Relevés de jambes', 'poids_du_corps'),
+  (18, 'Crunchs', 'poids_du_corps');
