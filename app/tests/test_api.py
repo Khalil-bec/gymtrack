@@ -9,7 +9,7 @@ from decimal import Decimal
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from main import app, resume_poids
+from main import app, resume_poids, progression
 import mysql.connector
 
 @pytest.fixture
@@ -1475,3 +1475,125 @@ def test_series_erreur_db(client, methode):
     assert res.status_code == 500
     assert res.get_json()["error"] == "db_error"
     mock_db.close.assert_called_once()
+
+
+# tests progression (un point par séance et par exercice)
+def serie(seance_id, jour, poids, reps, exercice=(1, "Développé couché", "charge")):
+    exercice_id, nom, type_exercice = exercice
+    return {"exercice_id": exercice_id, "nom": nom, "type": type_exercice,
+            "seance_id": seance_id, "date_seance": datetime.date(2026, 10, jour),
+            "poids_kg": None if poids is None else Decimal(poids), "repetitions": reps}
+
+
+def test_progression_charge_prend_la_serie_la_plus_lourde_de_chaque_seance():
+    """Exercice avec charge : un point par séance = la série la plus lourde, avec ses répétitions."""
+    lignes = [
+        serie(10, 6, "80", 8), serie(10, 6, "85", 5), serie(10, 6, "75", 10),
+        serie(11, 13, "87.5", 4), serie(11, 13, "82.5", 8),
+    ]
+    assert progression(lignes) == [{
+        "exercice_id": 1, "nom": "Développé couché", "type": "charge",
+        "points": [
+            {"seance_id": 10, "date_seance": datetime.date(2026, 10, 6), "poids_kg": 85.0, "repetitions": 5},
+            {"seance_id": 11, "date_seance": datetime.date(2026, 10, 13), "poids_kg": 87.5, "repetitions": 4},
+        ],
+    }]
+
+
+def test_progression_charge_a_poids_egal_garde_le_plus_de_repetitions():
+    """Deux séries au même poids maximal : le point garde celle avec le plus de répétitions."""
+    lignes = [serie(10, 6, "80", 6), serie(10, 6, "80", 8), serie(10, 6, "80", 7)]
+    assert progression(lignes)[0]["points"] == [
+        {"seance_id": 10, "date_seance": datetime.date(2026, 10, 6), "poids_kg": 80.0, "repetitions": 8},
+    ]
+
+
+def test_progression_poids_du_corps_prend_le_plus_de_repetitions_et_trie_par_date():
+    """Exercice au poids du corps : un point par séance = le plus de répétitions en une série, du plus ancien au plus récent."""
+    tractions = (14, "Tractions", "poids_du_corps")
+    lignes = [
+        serie(12, 20, None, 9, tractions), serie(12, 20, None, 11, tractions),
+        serie(10, 6, None, 8, tractions), serie(10, 6, None, 6, tractions),
+    ]
+    assert progression(lignes) == [{
+        "exercice_id": 14, "nom": "Tractions", "type": "poids_du_corps",
+        "points": [
+            {"seance_id": 10, "date_seance": datetime.date(2026, 10, 6), "poids_kg": None, "repetitions": 8},
+            {"seance_id": 12, "date_seance": datetime.date(2026, 10, 20), "poids_kg": None, "repetitions": 11},
+        ],
+    }]
+
+
+def test_progression_sans_serie():
+    """Aucune série notée : aucune progression."""
+    assert progression([]) == []
+
+
+# tests GET /athletes/<id>/progression
+def get_progression(client, athlete, lignes):
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = athlete
+    mock_cursor.fetchall.return_value = lignes
+    mock_db.cursor.return_value = mock_cursor
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/athletes/1/progression")
+    return res, mock_db
+
+
+def test_get_progression_athlete_inconnu_404(client):
+    """GET /athletes/<id>/progression pour un client qui n'existe pas doit retourner 404 athlete_not_found."""
+    res, mock_db = get_progression(client, None, [])
+
+    assert res.status_code == 404
+    assert res.get_json() == {"error": "athlete_not_found"}
+    mock_db.close.assert_called_once()
+
+
+def test_get_progression_charge_et_poids_du_corps(client):
+    """GET /athletes/<id>/progression : un point par séance, date en ISO, poids en nombre (vide au poids du corps)."""
+    tractions = (14, "Tractions", "poids_du_corps")
+    res, _ = get_progression(client, {"id": 1}, [
+        serie(10, 6, "80.00", 8), serie(10, 6, "82.50", 6), serie(11, 13, "85.00", 5),
+        serie(10, 6, None, 7, tractions), serie(10, 6, None, 9, tractions),
+    ])
+
+    assert res.status_code == 200
+    assert res.get_json() == [
+        {"exercice_id": 1, "nom": "Développé couché", "type": "charge", "points": [
+            {"seance_id": 10, "date_seance": "2026-10-06", "poids_kg": 82.5, "repetitions": 6},
+            {"seance_id": 11, "date_seance": "2026-10-13", "poids_kg": 85.0, "repetitions": 5},
+        ]},
+        {"exercice_id": 14, "nom": "Tractions", "type": "poids_du_corps", "points": [
+            {"seance_id": 10, "date_seance": "2026-10-06", "poids_kg": None, "repetitions": 9},
+        ]},
+    ]
+
+
+def test_get_progression_sans_donnees(client):
+    """Client sans série notée : liste vide (la carte Progression affiche un état vide)."""
+    res, _ = get_progression(client, {"id": 1}, [])
+
+    assert res.status_code == 200
+    assert res.get_json() == []
+
+
+def test_get_progression_erreur_db(client):
+    """Une erreur MySQL doit donner une 500 db_error en JSON et fermer la connexion."""
+    mock_db = MagicMock()
+    mock_db.cursor.return_value.execute.side_effect = mysql.connector.Error(msg="Lost connection")
+
+    with patch("main.get_db", return_value=mock_db):
+        res = client.get("/athletes/1/progression")
+
+    assert res.status_code == 500
+    assert res.get_json()["error"] == "db_error"
+    mock_db.close.assert_called_once()
+
+
+def test_progression_charge_ignore_une_serie_sans_poids():
+    """Série d'un exercice avec charge sans poids (saisie hors de l'API) : ignorée, pas d'erreur 500."""
+    lignes = [serie(10, 6, None, 12), serie(10, 6, "80", 5), serie(11, 13, None, 10)]
+    assert progression(lignes)[0]["points"] == [
+        {"seance_id": 10, "date_seance": datetime.date(2026, 10, 6), "poids_kg": 80.0, "repetitions": 5},
+    ]

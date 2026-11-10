@@ -208,6 +208,42 @@ def resume_poids(pesees, aujourdhui):
     return {"poids_actuel": actuel, "evolution_4_semaines": evolution}
 
 
+# Vrai si la série a bat la série b : avec charge, la plus lourde (puis le plus de répétitions à poids égal) ;
+# au poids du corps, le plus de répétitions.
+def meilleure_serie(a, b, type_exercice):
+    if type_exercice == "charge":
+        return (a["poids_kg"], a["repetitions"]) > (b["poids_kg"], b["repetitions"])
+    return a["repetitions"] > b["repetitions"]
+
+
+# Progression d'un client : à partir de ses séries (une ligne par série, avec l'exercice et la séance),
+# un point par séance et par exercice = la meilleure série de la séance.
+# Les exercices gardent l'ordre des lignes (trié par la requête SQL) ; les points vont du plus ancien au plus récent.
+def progression(lignes):
+    exercices = {}
+    for ligne in lignes:
+        # Une série avec charge sans poids (possible seulement hors de l'API, par Adminer par exemple)
+        # n'a pas de charge à comparer : on l'ignore plutôt que de planter
+        if ligne["type"] == "charge" and ligne["poids_kg"] is None:
+            continue
+        exercice = exercices.setdefault(ligne["exercice_id"], {
+            "exercice_id": ligne["exercice_id"], "nom": ligne["nom"], "type": ligne["type"], "meilleures": {},
+        })
+        point = {
+            "seance_id": ligne["seance_id"], "date_seance": ligne["date_seance"],
+            "poids_kg": None if ligne["poids_kg"] is None else float(ligne["poids_kg"]),
+            "repetitions": ligne["repetitions"],
+        }
+        actuelle = exercice["meilleures"].get(ligne["seance_id"])
+        if actuelle is None or meilleure_serie(point, actuelle, ligne["type"]):
+            exercice["meilleures"][ligne["seance_id"]] = point
+    resultat = []
+    for exercice in exercices.values():
+        points = sorted(exercice.pop("meilleures").values(), key=lambda p: (p["date_seance"], p["seance_id"]))
+        resultat.append({**exercice, "points": points})
+    return resultat
+
+
 app = Flask(__name__)
 app.json = JSONProvider(app)
 CORS(app)
@@ -548,6 +584,35 @@ def get_seances_athlete(athlete_id):
             ORDER BY s.date_seance DESC, s.id DESC
         """, (athlete_id,))
         return jsonify(cursor.fetchall())
+    except mysql.connector.Error as e:
+        return jsonify({"error": "db_error", "message": str(e)}), 500
+    finally:
+        if db is not None:
+            db.close()
+
+
+# La route /athletes/<id>/progression renvoie, pour chaque exercice où ce client a noté au moins une série
+# (triés par nom), un point par séance : la meilleure série (voir progression), du plus ancien au plus récent.
+@app.route("/athletes/<int:athlete_id>/progression")
+def get_progression(athlete_id):
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,))
+        if cursor.fetchone() is None:
+            return jsonify({"error": "athlete_not_found"}), 404
+        cursor.execute("""
+            SELECT x.id AS exercice_id, x.nom, x.type, s.id AS seance_id, s.date_seance,
+                   r.poids_kg, r.repetitions
+            FROM seances s
+            JOIN exercice_logs l ON l.seance_id = s.id
+            JOIN exercices x ON x.id = l.exercice_id
+            JOIN series r ON r.exercice_log_id = l.id
+            WHERE s.athlete_id = %s
+            ORDER BY x.nom, x.id
+        """, (athlete_id,))
+        return jsonify(progression(cursor.fetchall()))
     except mysql.connector.Error as e:
         return jsonify({"error": "db_error", "message": str(e)}), 500
     finally:

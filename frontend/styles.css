@@ -345,3 +345,20 @@ tr:last-child td { border-bottom: none; }
 @media (prefers-reduced-motion: no-preference) {
     .btn, .menu-liens a { transition: background-color 0.15s, color 0.15s, border-color 0.15s; }
 }
+
+/* Profil : Progression et Poids de corps côte à côte sur grand écran, l'un sous l'autre sur téléphone */
+.graphiques { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 16px; }
+.graphiques .carte-tete { min-height: 44px; }
+.choix-exercice { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.choix-exercice label { font-size: 14px; font-weight: 600; color: var(--attenue); }
+.choix-exercice select {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: var(--fond);
+    color: var(--clair);
+    font: 600 16px var(--corps);
+}
