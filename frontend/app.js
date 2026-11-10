@@ -1,295 +1,43 @@
-// L'adresse de ton API Flask
-const API_URL = "http://localhost:5000";
+// Point d'entrée : choisit la page à afficher selon l'adresse après le "#".
+import { pageClients } from "./js/pages/clients.js";
+import { pageProfil } from "./js/pages/profil.js";
+import { pageExercices } from "./js/pages/exercices.js";
+import { pageSeance } from "./js/pages/seance.js";
 
-// Fonction pour charger et afficher les athlètes
-async function chargerAthletes() {
-    try {
-        const reponse = await fetch(`${API_URL}/athletes`);
-        const athletes = await reponse.json();
+// "#/clients" → page Clients ; "#/clients/3" → profil du client 3 ; "#/seances/42" → séance 42 ;
+// "#/exercices" → page Exercices.
+const routes = {
+    clients: pageClients,
+    exercices: pageExercices,
+};
+// Pages qui affichent un élément ("#/<section>/<id>"), et l'entrée du menu qu'elles allument
+const pagesDetail = {
+    clients: { page: pageProfil, menu: "clients" },
+    seances: { page: pageSeance, menu: "clients" },
+};
 
-        const listeHtml = document.getElementById("athletes-list");
-        listeHtml.innerHTML = "";
+function afficher() {
+    const [section, id] = location.hash.replace(/^#\/?/, "").split("/");
+    const detail = id ? pagesDetail[section] : undefined;
+    const nom = detail ? detail.menu : routes[section] ? section : "clients";
 
-        athletes.forEach(athlete => {
-            const li = document.createElement("li");
-            li.className = "list-group-item d-flex justify-content-between align-items-center p-3";
-            
-            li.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <div class="avatar me-3 bg-primary text-white">${athlete.nom.charAt(0) }</div>
-                    <div>
-                        <h6 class="mb-0">${athlete.nom}</h6>
-                        <small class="text-muted">Poids : ${athlete.poids_kg || 0} kg</small>
-                    </div>
-                </div>
-                </div>
-                <button class="btn btn-sm btn-outline-primary">Voir</button>
-            `;
-            listeHtml.appendChild(li);
-        });
-
-    } catch (erreur) {
-        console.error("Erreur lors du chargement des athlètes :", erreur);
-        document.getElementById("athletes-list").innerHTML = 
-            `<li class="list-group-item text-danger">Erreur de connexion à l'API</li>`;
-    }
-}
-
-// On lance la fonction dès que la page est chargée
-document.addEventListener("DOMContentLoaded", () => {
-    chargerAthletes();
-    chargerSeances();
-});
-
-
-
-// Écouteur sur le formulaire du nouvel athlète
-document.getElementById("form-athlete").addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const nom = document.getElementById('input-athlete-nom').value.trim();
-    const email = document.getElementById('input-athlete-email').value.trim();
-    const poidsValue = document.getElementById('input-athlete-poids').value.trim();
-    const errorDisplay = document.getElementById('form-athlete-error');
-
-    const payload = { nom, email };
-    if (poidsValue !== "") payload.poids_kg = parseFloat(poidsValue);
-
-    errorDisplay.classList.add('d-none');
-    errorDisplay.textContent = "";
-
-    try {
-        const response = await fetch(`${API_URL}/athletes`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            console.log("Athlète créé avec l'ID:", data.id);
-            document.getElementById("form-athlete").reset();
-            bootstrap.Modal.getInstance(document.getElementById('modalNouvelAthlete')).hide();
-            chargerAthletes(); // rafraîchit la liste
-        } else {
-            errorDisplay.classList.remove('d-none');
-            if (response.status === 409) {
-                errorDisplay.textContent = "Cet email est déjà utilisé.";
-            } else if (response.status === 400 && data.missing) {
-                errorDisplay.textContent = `Champs manquants : ${data.missing.join(', ')}`;
-            } else {
-                errorDisplay.textContent = "Une erreur est survenue.";
-            }
-        }
-    } catch (error) {
-        console.error("Erreur réseau :", error);
-        errorDisplay.classList.remove('d-none');
-        errorDisplay.textContent = "Impossible de contacter le serveur.";
-    }
-});
-
-
-
-// Écouteur sur le formulaire de nouvelle séance
-document.getElementById("form-seance").addEventListener("submit", async (e) => {
-    e.preventDefault(); 
-
-    // On récupère les valeurs tapées par le coach
-    const athleteId = document.getElementById("input-athlete-id").value;
-    const titre = document.getElementById("input-titre").value;
-    const dateSeance = document.getElementById("input-date").value;
-    const duree = document.getElementById("input-duree").value;
-
-    const nouvelleSeance = {
-        athlete_id: Number.parseInt(athleteId, 10),
-        titre: (titre || "").trim(),
-        date_seance: dateSeance,
-        duree_min: Number.parseInt(duree, 10) || null
-    };
-
-    try {
-        //  On envoie les valeurs au serveur avec la méthode POST
-        const reponse = await fetch(`${API_URL}/seances`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(nouvelleSeance) 
-        });
-
-        if (reponse.ok) {
-            alert("✅ Séance enregistrée avec succès !");
-            
-            const modaleElement = document.getElementById('modalNouvelleSeance');
-            const modaleBootstrap = bootstrap.Modal.getInstance(modaleElement);
-            modaleBootstrap.hide();
-            
-            document.getElementById("form-seance").reset();
-
-        } else {
-            alert("❌ Erreur de l'API lors de l'enregistrement.");
-        }
-    } catch (erreur) {
-        console.error("Erreur réseau :", erreur);
-        alert("Impossible de contacter le serveur Flask.");
-    }
-});
-
-
-
-// Charger les séances
-async function chargerSeances() {
-    try {
-        const reponse = await fetch(`${API_URL}/seances`);
-        const seances = await reponse.json();
-        console.log(seances);
-        const listeHtml = document.querySelector("#seances-table tbody");
-        listeHtml.innerHTML = "";
-        seances.forEach((seance) => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td class="ps-3"><span class="text-muted fw-bold">${new Date(seance.date_seance).toLocaleDateString() || "N/A"}</span></td>
-                <td><strong>${seance.athlete_nom}</strong></td>
-                <td>${seance.titre}</td>
-                <td>${seance.duree_min} min</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-light text-primary btn-detail-seance">
-                        <i class="bi bi-eye"></i> Détails
-                    </button>
-                </td>
-            `;
-            tr.querySelector(".btn-detail-seance").addEventListener("click", () => {
-                voirDetailsSeance(
-                    seance.id,
-                    seance.titre || "",
-                    String(seance.date_seance ?? ""),
-                    Number(seance.duree_min) || 0,
-                    seance.athlete_nom || ""
-                );
-            });
-            listeHtml.appendChild(tr);
-        });
-    } catch (erreur) {
-        console.error("Erreur lors du chargement des séances :", erreur);
-        document.getElementById("seances-list").innerHTML = `<li class="list-group-item text-danger">Erreur de connexion à l'API</li>`;
-    }
-}
-
-// Fonction pour voir les détails d'une séance (résumé depuis la liste + logs depuis GET /seances/:id)
-async function voirDetailsSeance(seanceId, titre, dateSeance, dureeMin, athleteNom) {
-    try {
-        const reponse = await fetch(`${API_URL}/seances/${seanceId}`);
-        if (!reponse.ok) {
-            throw new Error(`HTTP ${reponse.status}`);
-        }
-        const lignes = await reponse.json();
-
-        document.getElementById("detail-titre").textContent = titre || "Séance";
-        document.getElementById("detail-date").textContent = dateSeance || "—";
-        document.getElementById("detail-duree").textContent =
-            dureeMin != null && dureeMin !== "" ? `${dureeMin} min` : "—";
-        document.getElementById("detail-athlete").textContent = athleteNom || "—";
-
-        const zone = document.getElementById("detail-exercices");
-        if (!Array.isArray(lignes) || lignes.length === 0) {
-            zone.innerHTML =
-                '<p class="text-muted small mb-0">Aucun exercice enregistré pour cette séance.</p>';
-        } else {
-            zone.innerHTML = `
-                <p class="text-muted small fw-bold mb-2">EXERCICES & SÉRIES</p>
-                <div class="table-responsive">
-                    <table class="table table-sm table-bordered mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Exercice</th>
-                                <th>Série</th>
-                                <th>Poids (kg)</th>
-                                <th>Reps</th>
-                                <th>Repos (s)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${lignes
-                                .map(
-                                    (l) => `
-                                <tr>
-                                    <td>${escapeHtml(l.exercice)}</td>
-                                    <td>${l.numero_serie ?? "—"}</td>
-                                    <td>${l.poids_kg ?? "—"}</td>
-                                    <td>${l.repetitions ?? "—"}</td>
-                                    <td>${l.repos_sec ?? "—"}</td>
-                                </tr>`
-                                )
-                                .join("")}
-                        </tbody>
-                    </table>
-                </div>`;
-        }
-
-        const modaleElement = document.getElementById("modalDetailsSeance");
-        bootstrap.Modal.getOrCreateInstance(modaleElement).show();
-    } catch (erreur) {
-        console.error("Erreur lors de la récupération des détails de la séance :", erreur);
-        alert("Impossible de récupérer les détails de la séance.");
-    }
-}
-
-function escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text == null ? "" : String(text);
-    return div.innerHTML;
-}
-document.addEventListener('DOMContentLoaded', function() {
-
-    
-    // 1. Cibler le canvas
-    const ctx = document.getElementById('volumeChart').getContext('2d');
-
-    // 2. Créer le graphique
-    const volumeChart = new Chart(ctx, {
-        type: 'line', // Type de graphique : 'line', 'bar', 'doughnut', etc.
-        data: {
-            // Les étiquettes sur l'axe X (ex: les jours ou les semaines)
-            labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
-            datasets: [{
-                label: 'Volume (kg)',
-                data: [1200, 1900, 800, 2100, 1500, 2800, 0], // Tes données
-                borderColor: '#4f46e5', // Ta couleur primaire (bleu/violet)
-                backgroundColor: 'rgba(79, 70, 229, 0.1)', // Fond transparent sous la courbe
-                borderWidth: 3,
-                tension: 0.4, // Rend la courbe "douce" et arrondie
-                fill: true, // Remplissage sous la courbe
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#4f46e5',
-                pointRadius: 4      
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false, // Permet au graphique de s'adapter au conteneur (les 300px définis dans le HTML)
-            plugins: {
-                legend: {
-                    display: false // On cache la légende si c'est assez explicite avec le titre de la carte
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: '#f1f5f9' // Couleur de la grille (assortie à ton design)
-                    }
-                },
-                x: {
-                    grid: {
-                        display: false // On cache la grille verticale pour un look plus épuré
-                    }
-                }
-            }
-        }
+    document.querySelectorAll("[data-nav]").forEach((lien) => {
+        if (lien.dataset.nav === nom) lien.setAttribute("aria-current", "page");
+        else lien.removeAttribute("aria-current");
     });
-});
+
+    // Chaque affichage repart d'un conteneur neuf : une page encore en chargement
+    // (réponse lente de l'API) écrit dans l'ancien, déjà retiré, et ne gêne pas la nouvelle.
+    const conteneur = document.createElement("div");
+    conteneur.id = "page";
+    conteneur.className = "page";
+    conteneur.tabIndex = -1;
+    document.getElementById("page").replaceWith(conteneur);
+
+    const page = detail ? detail.page(conteneur, id) : routes[nom](conteneur);
+    Promise.resolve(page).catch((erreur) => console.error(erreur));
+    conteneur.focus({ preventScroll: true });
+}
+
+window.addEventListener("hashchange", afficher);
+afficher();

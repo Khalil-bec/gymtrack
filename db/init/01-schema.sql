@@ -3,9 +3,27 @@ SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 CREATE TABLE IF NOT EXISTS athletes (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   nom        VARCHAR(100) NOT NULL,
-  email      VARCHAR(150) UNIQUE NOT NULL,
-  poids_kg   DECIMAL(5,2),
+  email      VARCHAR(150) UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Pesées : le poids de corps d'un client dans le temps (le poids actuel = la dernière pesée)
+CREATE TABLE IF NOT EXISTS pesees (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  athlete_id  INT NOT NULL,
+  date_pesee  DATE NOT NULL,
+  poids_kg    DECIMAL(5,2) NOT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (athlete_id) REFERENCES athletes(id)
+);
+
+-- Exercices : la liste partagée par toutes les séances (on peut seulement en ajouter).
+-- La collation ignore la casse et les accents : « developpe couche » est un doublon de « Développé couché ».
+CREATE TABLE IF NOT EXISTS exercices (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  nom         VARCHAR(100) COLLATE utf8mb4_0900_ai_ci NOT NULL UNIQUE,
+  type        ENUM('charge', 'poids_du_corps') NOT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS seances (
@@ -19,40 +37,48 @@ CREATE TABLE IF NOT EXISTS seances (
   FOREIGN KEY (athlete_id) REFERENCES athletes(id)
 );
 
+-- Exercices notés dans une séance : un exercice de la liste, au plus une fois par séance, dans l'ordre d'ajout
 CREATE TABLE IF NOT EXISTS exercice_logs (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  seance_id  INT NOT NULL,
-  nom        VARCHAR(100) NOT NULL,
-  ordre      INT DEFAULT 1,
-  FOREIGN KEY (seance_id) REFERENCES seances(id)
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  seance_id    INT NOT NULL,
+  exercice_id  INT NOT NULL,
+  ordre        INT NOT NULL,
+  UNIQUE (seance_id, exercice_id),
+  -- Supprimer une séance supprime ses exercices notés (et, en cascade, leurs séries)
+  FOREIGN KEY (seance_id) REFERENCES seances(id) ON DELETE CASCADE,
+  FOREIGN KEY (exercice_id) REFERENCES exercices(id)
 );
 
+-- Séries d'un exercice noté, numérotées 1, 2, 3… ; poids_kg vide pour un exercice au poids du corps
 CREATE TABLE IF NOT EXISTS series (
-  id             INT AUTO_INCREMENT PRIMARY KEY,
-  exercice_id    INT NOT NULL,
-  numero_serie   INT NOT NULL,
-  poids_kg       DECIMAL(5,2),
-  repetitions    INT NOT NULL,
-  repos_sec      INT DEFAULT 90,
-  FOREIGN KEY (exercice_id) REFERENCES exercice_logs(id)
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  exercice_log_id  INT NOT NULL,
+  numero_serie     INT NOT NULL,
+  poids_kg         DECIMAL(5,2),
+  repetitions      INT NOT NULL,
+  repos_sec        INT NOT NULL DEFAULT 90,
+  UNIQUE (exercice_log_id, numero_serie),
+  FOREIGN KEY (exercice_log_id) REFERENCES exercice_logs(id) ON DELETE CASCADE
 );
 
--- Données de test
-INSERT INTO athletes (nom, email, poids_kg) VALUES
-  ('Khalil', 'khalil@gymtrack.com', 80.5);
-
-INSERT INTO seances (athlete_id, titre, date_seance, duree_min) VALUES
-  (1, 'Push Day — Poitrine/Épaules/Triceps', '2026-03-22', 75),
-  (1, 'Pull Day — Dos/Biceps', '2026-03-20', 65);
-
-INSERT INTO exercice_logs (seance_id, nom, ordre) VALUES
-  (1, 'Développé couché', 1),
-  (1, 'Développé militaire', 2),
-  (2, 'Tractions', 1),
-  (2, 'Rowing barre', 2);
-
-INSERT INTO series (exercice_id, numero_serie, poids_kg, repetitions) VALUES
-  (1, 1, 80, 8), (1, 2, 80, 7), (1, 3, 75, 8),
-  (2, 1, 50, 10), (2, 2, 50, 9),
-  (3, 1, 0, 8), (3, 2, 0, 7),
-  (4, 1, 60, 10), (4, 2, 60, 9);
+-- Liste d'exercices de départ (les données de démo sont dans 02-donnees-demo.sql)
+-- Ids explicites : 02-donnees-demo.sql y fait référence
+INSERT INTO exercices (id, nom, type) VALUES
+  (1, 'Développé couché', 'charge'),
+  (2, 'Développé incliné haltères', 'charge'),
+  (3, 'Développé militaire', 'charge'),
+  (4, 'Élévations latérales', 'charge'),
+  (5, 'Squat', 'charge'),
+  (6, 'Soulevé de terre', 'charge'),
+  (7, 'Presse à cuisses', 'charge'),
+  (8, 'Fentes haltères', 'charge'),
+  (9, 'Hip thrust', 'charge'),
+  (10, 'Rowing barre', 'charge'),
+  (11, 'Tirage vertical', 'charge'),
+  (12, 'Curl biceps', 'charge'),
+  (13, 'Extension triceps à la poulie', 'charge'),
+  (14, 'Tractions', 'poids_du_corps'),
+  (15, 'Dips', 'poids_du_corps'),
+  (16, 'Pompes', 'poids_du_corps'),
+  (17, 'Relevés de jambes', 'poids_du_corps'),
+  (18, 'Crunchs', 'poids_du_corps');

@@ -1,0 +1,364 @@
+/* GymTrack — thème "Corail" (voir les maquettes validées) */
+
+:root {
+    --fond: #161b24;
+    --menu: #12161e;
+    --menu-bord: #222935;
+    --carte: #1f2631;
+    --bord: #2c3441;
+    --champ-bord: #39424f;
+    --texte: #e5e9f0;
+    --clair: #f1f4f8;
+    --attenue: #a7b0c0;
+    --accent: #fb7185;
+    --accent-doux: #fb718524;
+    --sur-accent: #0f172a;
+    --titre: "Barlow Semi Condensed", sans-serif;
+    --corps: Barlow, system-ui, sans-serif;
+    --rayon-carte: 8px;
+    --rayon: 6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--fond);
+    color: var(--texte);
+    font-family: var(--corps);
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+a { color: var(--accent); }
+a:hover { color: var(--clair); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h1, h2 { font-family: var(--titre); font-weight: 700; color: var(--clair); margin: 0; }
+h1 { font-size: 32px; line-height: 1.1; }
+h2 { font-size: 22px; }
+
+/* Mise en page : menu à gauche, contenu à droite ; sur téléphone le menu passe au-dessus */
+.layout { display: flex; flex-wrap: wrap; min-height: 100vh; }
+
+.menu {
+    flex: 1 1 220px;
+    max-width: 100%;
+    background: var(--menu);
+    border-right: 1px solid var(--menu-bord);
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    font-family: var(--titre);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--clair);
+    text-decoration: none;
+}
+.logo svg { color: var(--accent); }
+
+.menu-liens { display: flex; flex-direction: column; gap: 4px; }
+.menu-liens a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: var(--rayon);
+    color: var(--attenue);
+    font-weight: 600;
+    text-decoration: none;
+}
+.menu-liens a:hover { color: var(--clair); background: var(--carte); }
+.menu-liens a[aria-current="page"] { background: var(--accent-doux); color: var(--accent); font-weight: 700; }
+
+.contenu { flex: 999 1 560px; min-width: 0; padding: 32px 40px; }
+.page { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+.page:focus { outline: none; }
+
+@media (max-width: 640px) {
+    /* Liens du fil d'Ariane assez hauts pour le doigt (44 px), comme la flèche retour de la maquette téléphone */
+    .fil a { display: inline-flex; align-items: center; min-height: 44px; }
+    .menu { border-right: none; border-bottom: 1px solid var(--menu-bord); padding: 16px; gap: 12px; }
+    .menu-liens { flex-direction: row; }
+    .contenu { padding: 20px 16px; }
+}
+
+/* En-tête de page */
+.entete-page { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between; }
+.sous-titre { margin: 6px 0 0; color: var(--attenue); }
+
+/* Boutons */
+.btn {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: transparent;
+    color: var(--texte);
+    font: 600 15px var(--corps);
+    cursor: pointer;
+}
+.btn:hover { border-color: var(--attenue); }
+.btn:disabled { opacity: 0.6; cursor: wait; }
+.btn-primaire { border: none; background: var(--accent); color: var(--sur-accent); font-weight: 700; }
+.btn-primaire:hover { filter: brightness(1.08); }
+.btn-icone {
+    min-width: 44px;
+    min-height: 44px;
+    border: none;
+    background: transparent;
+    color: var(--attenue);
+    font-size: 24px;
+    cursor: pointer;
+    border-radius: var(--rayon);
+}
+.btn-icone:hover { color: var(--clair); }
+
+/* Cartes et tableaux */
+.carte { background: var(--carte); border: 1px solid var(--bord); border-radius: var(--rayon-carte); padding: 20px; }
+.carte-tableau { padding: 8px 0; }
+.defilement { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; min-width: 480px; }
+th { font-size: 13px; font-weight: 600; color: var(--attenue); text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--bord); }
+td { padding: 12px 16px; border-bottom: 1px solid var(--bord); }
+tr:last-child td { border-bottom: none; }
+.attenue { color: var(--attenue); }
+
+.cellule-client { display: flex; align-items: center; gap: 12px; }
+.cellule-client .nom { font-weight: 700; color: var(--clair); text-decoration: none; }
+.cellule-client a.nom:hover { color: var(--accent); }
+.carte-tableau table { min-width: 720px; }
+.carte-tableau th, .carte-tableau td { white-space: nowrap; }
+.tableau-compact { min-width: 0; }
+.fort { font-weight: 600; }
+.a-droite { text-align: right; }
+.lien-action { font-weight: 700; text-decoration: none; white-space: nowrap; }
+.clair { color: var(--clair); }
+.tableau-exercices table { min-width: 560px; }
+.carte-tableau .tableau-seances { min-width: 560px; }
+.carte-tete.carte-tete-tableau { padding: 12px 16px 8px; margin-bottom: 0; }
+.infos-seance { display: flex; flex-wrap: wrap; gap: 16px; }
+
+/* Page Séance : un exercice par carte, ses séries, puis la saisie de la suivante */
+.exercices-seance { display: flex; flex-direction: column; gap: 16px; }
+.carte-exercice { display: flex; flex-direction: column; gap: 12px; }
+.tete-exercice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.nom-exercice { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-width: 0; }
+.tableau-series { min-width: 0; }
+.tableau-series th, .tableau-series td { padding: 10px 8px; }
+.tableau-series th:first-child, .tableau-series td:first-child { padding-left: 0; }
+.tableau-series th:last-child, .tableau-series td:last-child { padding-right: 0; }
+.coche { color: #4ade80; font-weight: 700; }
+.btn-ligne { min-height: 44px; padding: 0 12px; font-size: 14px; }
+.actions-serie { white-space: nowrap; }
+.actions-serie .coche { margin-right: 10px; }
+.sans-coupure { white-space: nowrap; }
+/* Téléphone : comme la maquette, la ligne d'une série montre poids et reps ; le repos se voit en la modifiant */
+@media (max-width: 640px) {
+    .tableau-series .col-repos { display: none; }
+    .tableau-series th, .tableau-series td { padding-left: 4px; padding-right: 4px; }
+}
+/* « Supprimer la série » à gauche, loin de « Enregistrer » */
+.actions-correction { flex-wrap: wrap; }
+.actions-correction .btn-danger { margin-right: auto; }
+.btn-danger { color: var(--accent); border-color: var(--accent); }
+.saisie-serie, .ajout-exercice { display: flex; flex-direction: column; gap: 10px; }
+.saisie-serie { border-top: 1px solid var(--bord); padding-top: 12px; }
+.numero-saisie { margin: 0; font-weight: 700; color: var(--accent); }
+.champs-serie { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; }
+.champ { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.champ label { font-size: 13px; font-weight: 600; color: var(--attenue); }
+.champ input, .champ select {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 12px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: var(--fond);
+    color: var(--clair);
+    font: 600 18px var(--corps);
+}
+.champ select { font-size: 16px; }
+.saisie-serie .erreur-formulaire, .ajout-exercice .erreur-formulaire { margin: 0; min-height: 0; }
+.btn-serie { min-height: 52px; font-size: 17px; }
+/* Sur un écran large, le bouton reprend sa taille normale ; sur téléphone il prend toute la largeur */
+@media (min-width: 641px) {
+    .btn-serie { align-self: flex-start; min-height: 44px; font-size: 15px; padding: 0 24px; }
+    .champs-serie { grid-template-columns: repeat(auto-fit, minmax(120px, 160px)); }
+    .ajout-exercice { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+    .ajout-exercice .champ { flex: 1 1 260px; }
+    .ajout-exercice .champ select { min-height: 44px; }
+    .ajout-exercice .erreur-formulaire { flex-basis: 100%; }
+}
+
+/* Page Exercices : filtres par type et étiquette du type */
+.filtres { display: flex; flex-wrap: wrap; gap: 8px; }
+.filtre {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: transparent;
+    color: var(--attenue);
+    font: 600 14px var(--corps);
+    cursor: pointer;
+}
+.filtre:hover { color: var(--clair); }
+.filtre[aria-pressed="true"] { background: var(--accent-doux); color: var(--accent); border-color: var(--accent); }
+.etiquette {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--champ-bord);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--attenue);
+}
+
+/* Bouton qui a l'air d'un lien (action sur la page, pas un changement d'adresse) */
+.lien {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: 600 14px var(--corps);
+    text-decoration: underline;
+    cursor: pointer;
+}
+.lien:hover { color: var(--clair); }
+
+/* Texte lu par les lecteurs d'écran mais invisible */
+.visuellement-cache {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+.avatar {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--accent-doux);
+    color: var(--accent);
+    font-family: var(--titre);
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Profil client */
+.fil { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--attenue); }
+.fil a { font-weight: 600; text-decoration: none; }
+.entete-profil { align-items: center; }
+.actions-entete { display: flex; flex-wrap: wrap; gap: 12px; }
+.identite { display: flex; gap: 16px; align-items: center; }
+.avatar-grand { width: 56px; height: 56px; font-size: 22px; }
+
+.tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.tuile { padding: 18px 20px; }
+.tuile p { margin: 0; }
+.tuile-libelle { font-size: 14px; font-weight: 600; color: var(--attenue); }
+.tuile .tuile-valeur { margin-top: 6px; font-family: var(--titre); font-size: 30px; font-weight: 700; color: var(--clair); }
+.tuile-detail { margin-left: 8px; font-family: var(--corps); font-size: 15px; font-weight: 600; color: var(--attenue); }
+
+.carte-tete { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.legende { margin: 0 0 8px; font-size: 14px; color: var(--attenue); }
+.zone-graphique { position: relative; height: 230px; margin-bottom: 8px; }
+.carte > .lien { margin-top: 8px; }
+.message-confirmation { margin: 8px 0 0; }
+
+/* États : chargement, vide, erreur */
+.etat {
+    background: var(--carte);
+    border: 1px dashed var(--champ-bord);
+    border-radius: var(--rayon-carte);
+    padding: 32px 20px;
+    text-align: center;
+    color: var(--attenue);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+.etat p { margin: 0; }
+
+/* Fenêtres de formulaire */
+.modale {
+    width: min(440px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid var(--bord);
+    border-radius: var(--rayon-carte);
+    background: var(--carte);
+    color: var(--texte);
+}
+.modale::backdrop { background: rgb(8 10 14 / 0.7); }
+.modale-tete { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 0 20px; }
+
+.formulaire { display: flex; flex-direction: column; gap: 6px; padding: 12px 20px 20px; }
+.formulaire label { font-size: 14px; font-weight: 600; color: var(--attenue); margin-top: 8px; }
+.formulaire input {
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: var(--fond);
+    color: var(--clair);
+    font: 600 16px var(--corps);
+}
+.facultatif { font-weight: 500; }
+.groupe-choix { border: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.groupe-choix legend { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 600; color: var(--attenue); }
+.formulaire .choix { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; color: var(--clair); font-size: 15px; cursor: pointer; }
+.formulaire .choix input { min-height: 0; width: 18px; height: 18px; accent-color: var(--accent); }
+.erreur-formulaire { margin: 8px 0 0; min-height: 1.5em; color: var(--accent); font-weight: 600; }
+.actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 12px; }
+
+/* Messages temporaires */
+.toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+.toast {
+    padding: 12px 16px;
+    border-radius: var(--rayon);
+    background: var(--menu);
+    border: 1px solid var(--bord);
+    border-left: 4px solid #4ade80;
+    color: var(--clair);
+    font-weight: 600;
+}
+.toast-erreur { border-left-color: var(--accent); }
+
+@media (prefers-reduced-motion: no-preference) {
+    .btn, .menu-liens a { transition: background-color 0.15s, color 0.15s, border-color 0.15s; }
+}
+
+/* Profil : Progression et Poids de corps côte à côte sur grand écran, l'un sous l'autre sur téléphone */
+.graphiques { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 16px; }
+.graphiques .carte-tete { min-height: 44px; }
+.choix-exercice { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.choix-exercice label { font-size: 14px; font-weight: 600; color: var(--attenue); }
+.choix-exercice select {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: var(--rayon);
+    border: 1px solid var(--champ-bord);
+    background: var(--fond);
+    color: var(--clair);
+    font: 600 16px var(--corps);
+}
