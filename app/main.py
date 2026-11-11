@@ -266,10 +266,20 @@ def get_db():
     )
 
     
-# La route /health est une simple route de test qui renvoie un statut "ok" en réponse JSON.
+# La route /health est une route de santé pour vérifier que l'application peut se connecter à la base de données MySQL.
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    db = None
+    try :
+        db = get_db()
+        db.cursor().execute("SELECT 1")
+    except mysql.connector.Error as e:
+        app.logger.error("Health check failed: %s", e)
+        return jsonify({"status": "error", "message": "connection a la base de donnees echouee"}), 503
+    finally:
+        if db is not None:
+            db.close()
+    return jsonify({"status": "ok"}) 
 
 
 # La route /athletes renvoie tous les athlètes (les "clients" de l'interface),
