@@ -19,11 +19,16 @@ def client():
         yield client
 #tests /health
 def test_health_status_200(client):
-    """GET /health doit retourner HTTP 200."""
-    res = client.get("/health")
-    assert res.status_code == 200
-    """GET /health doit retourner {"status": "ok"}."""
-    data = res.get_json()
+    mock_db = MagicMock()
+    mock_cursor = MagicMock()
+    mock_db.cursor.return_value = mock_cursor
+
+    with patch("main.get_db", return_value=mock_db):
+        """GET /health doit retourner HTTP 200."""
+        res = client.get("/health")
+        assert res.status_code == 200
+        """GET /health doit retourner {"status": "ok"}."""
+        data = res.get_json()
     assert data["status"] == "ok"   
 #test GET /athletes
 
