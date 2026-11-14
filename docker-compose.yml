@@ -6,8 +6,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
-    ports:
-      - "3306:3306"
     volumes:
       - ./db/init:/docker-entrypoint-initdb.d
       - db-data:/var/lib/mysql
@@ -30,6 +28,7 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
+      DEBUG_MODE: "false"
     depends_on:
       db:
         condition: service_healthy  
@@ -44,17 +43,7 @@ services:
       start_period: 30s
 
 
-  adminer:
-    image: adminer
-    container_name: gymtrack-adminer
-    ports:
-      - "8080:8080"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - gymtrack-network
-      - shared-net
+
 
   frontend:
     build: ./frontend
@@ -66,8 +55,7 @@ services:
     depends_on:
       app:
         condition: service_healthy
-    volumes:
-      - ./frontend:/usr/share/nginx/html
+
 
     
 volumes:
