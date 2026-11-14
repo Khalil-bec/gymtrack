@@ -940,6 +940,6 @@ def delete_seance(seance_id):
         if db is not None:
             db.close()
 
-
+debug_mode = os.getenv("DEBUG_MODE","false").lower() == "true"
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=debug_mode)
